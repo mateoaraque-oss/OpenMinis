@@ -508,7 +508,18 @@ class MainActivity : ComponentActivity() {
         // while inside a chat, synthesise an OpenSession deep-link so
         // the navigation stack lands on that chat instead of the
         // sessions list. T166.
-        val explicitDeepLink = DeepLinkHandler.parse(intent?.data)
+        // [T-orion-assistant] The system's assist gesture (long-press home,
+        // power-button long press, "Hey Google" handoff) delivers
+        // ACTION_ASSIST to this activity. Treat it exactly like the
+        // voice-chat quick action: new chat + mic fires on first compose.
+        // VOICE_COMMAND is the legacy equivalent some ROMs and headsets use.
+        val isAssistInvocation = intent?.action == Intent.ACTION_ASSIST ||
+            intent?.action == Intent.ACTION_VOICE_COMMAND
+        val explicitDeepLink = if (isAssistInvocation) {
+            DeepLinkAction.NewVoiceChat
+        } else {
+            DeepLinkHandler.parse(intent?.data)
+        }
         val launchDeepLink = if (explicitDeepLink !is DeepLinkAction.Unknown) {
             explicitDeepLink
         } else {
@@ -726,6 +737,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        // [T-orion-assistant] Warm assist invocation: the app is already alive
+        // and the user triggers the assist gesture again. Route it through the
+        // same voice-chat deep link the cold-start path synthesises.
+        if (intent.action == Intent.ACTION_ASSIST ||
+            intent.action == Intent.ACTION_VOICE_COMMAND
+        ) {
+            handleDeepLink(android.net.Uri.parse("minis://action/voice_chat"))
+            return
+        }
         // T51: warm-start share — ShareReceiverActivity re-launches with
         // FLAG_ACTIVITY_CLEAR_TOP, which delivers the new intent here when
         // MainActivity is already alive. Process the buffered share before

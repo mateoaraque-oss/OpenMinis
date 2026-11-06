@@ -72,6 +72,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
+import android.app.role.RoleManager
+import android.content.Intent
+import android.os.Build
 import com.openminis.app.BuildConfig
 import com.openminis.app.R
 import com.openminis.app.ui.components.openExternalUrl
@@ -147,6 +150,66 @@ fun SettingsScreen(
                 .padding(padding)
                 .verticalScroll(rememberScrollState()),
         ) {
+            // -- Orion (assistant role + screen control) --
+            // [T-orion-assistant] The two grants that turn this from a chat
+            // app into a phone assistant: ROLE_ASSISTANT makes it the target
+            // of the long-press-home gesture, and the accessibility service
+            // is what lets the agent read the screen and act on it.
+            SettingsSection(
+                title = stringResource(R.string.orion_section_title),
+                footer = stringResource(R.string.orion_section_footer),
+            ) {
+                SettingsItem(
+                    icon = Icons.Outlined.AutoAwesome,
+                    iconColor = Color(0xFF7C6CFF),
+                    title = stringResource(R.string.orion_become_assistant),
+                    subtitle = stringResource(R.string.orion_become_assistant_subtitle),
+                    onClick = {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            val rm = context.getSystemService(RoleManager::class.java)
+                            if (rm != null && rm.isRoleAvailable(RoleManager.ROLE_ASSISTANT)) {
+                                if (rm.isRoleHeld(RoleManager.ROLE_ASSISTANT)) {
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        context.getString(R.string.orion_assistant_active),
+                                        android.widget.Toast.LENGTH_SHORT,
+                                    ).show()
+                                } else {
+                                    context.startActivity(
+                                        rm.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT),
+                                    )
+                                }
+                            } else {
+                                // ROM without the assistant role: the default-apps
+                                // page still lets the user pick Orion as assistant.
+                                context.startActivity(
+                                    Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                )
+                            }
+                        } else {
+                            context.startActivity(
+                                Intent(android.provider.Settings.ACTION_SETTINGS)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                        }
+                    },
+                )
+                SettingsItem(
+                    icon = Icons.Outlined.FrontHand,
+                    iconColor = Color(0xFF00B894),
+                    title = stringResource(R.string.orion_accessibility),
+                    subtitle = stringResource(R.string.orion_accessibility_subtitle),
+                    onClick = {
+                        context.startActivity(
+                            Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    },
+                    showDivider = false,
+                )
+            }
+
             // -- LLM Providers --
             SettingsSection(
                 title = stringResource(R.string.settings_section_llm_providers),

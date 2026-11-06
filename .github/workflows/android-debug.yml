@@ -56,8 +56,19 @@ jobs:
           go-version: '1.25.x'
           cache: false
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Locate the preinstalled Android SDK
+        run: |
+          # The runner image ships a full SDK. android-actions/setup-android@v3
+          # is deliberately NOT used: it runs `sdkmanager tools`, a package
+          # Google removed, and the whole job dies before compiling anything.
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          SDKMANAGER="$(find "$ANDROID_HOME" -name sdkmanager -type f | head -n 1)"
+          test -n "$SDKMANAGER"
+          echo "sdkmanager at $SDKMANAGER"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          "$SDKMANAGER" --version
 
       - name: Install SDK packages
         run: |

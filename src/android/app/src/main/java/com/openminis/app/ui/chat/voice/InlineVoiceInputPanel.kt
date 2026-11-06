@@ -68,6 +68,7 @@ import com.openminis.app.R
 import com.openminis.app.data.repository.ProviderRepository
 import com.openminis.app.speech.RecognitionState
 import com.openminis.app.speech.SpeechRecognitionManager
+import com.openminis.app.ui.components.OrionOrb
 import com.openminis.app.ui.theme.ChatColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -964,6 +965,17 @@ private fun ExpandedContent(
         }
 
         Spacer(Modifier.height(10.dp))
+
+        // Orion orb: the assistant's face. Fed by the same rolling audio
+        // levels as the waveform, so it breathes with the user's voice while
+        // recording and keeps a slow idle pulse otherwise.
+        OrionOrb(
+            levels = levels,
+            isActive = isRecording,
+            diameter = 104.dp,
+        )
+
+        Spacer(Modifier.height(8.dp))
 
         // Focal mic + delete to its right (only when there's text).
         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {

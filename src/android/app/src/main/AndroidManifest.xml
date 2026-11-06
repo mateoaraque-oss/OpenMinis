@@ -239,6 +239,25 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="minis" />
             </intent-filter>
+            <!-- [T-orion-assistant] Make Orion eligible for the system's
+                 assistant role and for the long-press-home / power-button
+                 assist gesture. Android resolves ACTION_ASSIST to this
+                 activity; MainActivity maps it to a new chat in voice mode,
+                 so the gesture behaves like Google Assistant: hold home,
+                 speak, the agent answers.
+
+                 VOICE_COMMAND is the older dedicated voice-command entry
+                 point some ROMs still dispatch (headsets, car kits). Both
+                 filters are needed for the app to show up under
+                 Settings > Apps > Default apps > Digital assistant app. -->
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VOICE_COMMAND" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
         </activity>
 
         <!-- T-android-dynamic-app-icon: launcher-icon aliases. Exactly
