@@ -10,6 +10,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -104,7 +105,7 @@ fun OrionOrb(
         label = "orionShimmer",
     )
 
-    Canvas(modifier = modifier.then(Modifier)) {
+    Canvas(modifier = modifier.size(diameter)) {
         val center = Offset(size.width / 2f, size.height / 2f)
         val half = size.minDimension / 2f
 
