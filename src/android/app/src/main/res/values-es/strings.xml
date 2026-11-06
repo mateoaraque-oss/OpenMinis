@@ -1990,4 +1990,8 @@
     <string name="mcp_signin_not_signed_in">Sesión no iniciada</string>
     <string name="mcp_signin_sign_in">Iniciar sesión</string>
     <string name="mcp_signin_reset_confirm">Restablecer</string>
+    <!-- [T-orion-presence] Etiquetas de estado bajo la barra superior del chat. -->
+    <string name="orion_state_listening">Escuchando&#8230;</string>
+    <string name="orion_state_thinking">Pensando&#8230;</string>
+    <string name="orion_state_speaking">Respondiendo&#8230;</string>
 </resources>

@@ -148,6 +148,8 @@ import com.openminis.app.R
 import com.openminis.app.data.FileMentionIndex
 import com.openminis.app.logging.AppLogger
 import com.openminis.app.ui.components.MinisAlertDialog
+import com.openminis.app.ui.components.OrionMood
+import com.openminis.app.ui.components.OrionPresenceStrip
 import com.openminis.app.ui.components.MinisMenu
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.History
@@ -624,6 +626,28 @@ fun ChatScreen(
     val revealedUsageIds by viewModel.revealedUsageIds.collectAsState()
     val hasOlderMessages by viewModel.hasOlderMessages.collectAsState()
     val isStreaming by viewModel.isStreaming.collectAsState()
+    // [T-orion-presence] Orion's body language for this screen. The orb is
+    // driven by real signals only: the speech recogniser's state, the mic's
+    // rolling amplitude, and the stream of answer chunks. Nothing here is a
+    // decorative timer pretending to be activity.
+    val orionSttState by com.openminis.app.speech.SpeechRecognitionManager.state.collectAsState()
+    val orionLevels by com.openminis.app.speech.SpeechRecognitionManager.audioLevels.collectAsState()
+    val orionVoiceMode = com.openminis.app.ui.chat.voice.VoiceModePrefs.isVoiceActive
+    val lastOrionMessage = messages.lastOrNull()
+    val orionAnswering = isStreaming &&
+        lastOrionMessage?.role == "assistant" &&
+        lastOrionMessage.content.isNotEmpty()
+    val orionMood = when {
+        orionSttState == com.openminis.app.speech.RecognitionState.RECORDING ||
+            orionSttState == com.openminis.app.speech.RecognitionState.STARTING ->
+            OrionMood.LISTENING
+        orionAnswering -> OrionMood.SPEAKING
+        isStreaming -> OrionMood.THINKING
+        else -> OrionMood.STANDBY
+    }
+    // Each chunk changes the answer length; that integer is the orb's pulse
+    // counter, so the sphere beats once per arriving piece of the reply.
+    val orionPulse = if (orionAnswering) (lastOrionMessage?.content?.length ?: 0) else 0
     // [T-android-jankdiag] Tag frame summaries with "a reply is streaming".
     LaunchedEffect(isStreaming) { com.openminis.app.diagnostics.JankDiag.setStreaming(isStreaming) }
     // [T-android-jankdiag] A chat opens inside the sessions route on a phone: name it.
@@ -3762,6 +3786,17 @@ fun ChatScreen(
             // its id on the first message, while `sessionId` here stays the
             // draft id - so the pill matched no task in a chat started fresh.
             ScheduledTaskPill(currentSessionId = { viewModel.currentSessionId })
+            // [T-orion-presence] Persistent orb: shows up under the app bar
+            // for every turn, typed or spoken. In voice mode the panel's big
+            // orb already covers listening, so this one only speaks up for
+            // the phases that happen outside it.
+            OrionPresenceStrip(
+                listening = orionMood == OrionMood.LISTENING && !orionVoiceMode,
+                streaming = isStreaming,
+                answering = orionAnswering,
+                levels = orionLevels,
+                pulseKey = orionPulse,
+            )
         } },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
@@ -6723,6 +6758,8 @@ fun ChatScreen(
                             // timed slot rather than the composer's
                             // focus-driven lifecycle.
                             contextUsageHint = contextUsageHint,
+                            orionMood = orionMood,
+                            orionPulse = orionPulse,
                             onEditProvider = onEditProviderClick,
                         )
                     } else if (recIsRecording) {

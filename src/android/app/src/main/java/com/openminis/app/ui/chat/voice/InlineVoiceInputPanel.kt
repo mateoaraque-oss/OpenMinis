@@ -69,6 +69,7 @@ import com.openminis.app.data.repository.ProviderRepository
 import com.openminis.app.speech.RecognitionState
 import com.openminis.app.speech.SpeechRecognitionManager
 import com.openminis.app.ui.components.OrionOrb
+import com.openminis.app.ui.components.OrionMood
 import com.openminis.app.ui.theme.ChatColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -207,6 +208,10 @@ internal fun InlineVoiceInputPanel(
     // so a timed slot is the honest fit rather than a port of the composer's
     // rules. Mirrors iOS `InlineVoiceInputView`.
     contextUsageHint: com.openminis.app.ui.chat.ContextUsageHint? = null,
+    /** [T-orion-presence] Mood from the chat screen; null = derive from recording. */
+    orionMood: OrionMood? = null,
+    /** [T-orion-presence] Answer-chunk counter, so the orb beats while Orion replies. */
+    orionPulse: Int = 0,
     /** [T-android-picker-provider-edit] Open a provider's settings from the voice picker; null hides the button. */
     onEditProvider: ((instanceId: String) -> Unit)? = null,
 ) {
@@ -757,6 +762,8 @@ internal fun InlineVoiceInputPanel(
                     groupName = groupName,
                     modelLabel = modelLabel,
                     contextUsageLine = shownUsageHint,
+                    orionMood = orionMood,
+                    orionPulse = orionPulse,
                     onMicTap = { handleMicTap() },
                     onTranscriptChange = {
                         VoiceSendGate.abandonFinishForSend("text edited")
@@ -875,6 +882,10 @@ private fun ExpandedContent(
     onOpenSelector: () -> Unit,
     // [T-android-context-usage-hint] Line currently owning the status row.
     contextUsageLine: com.openminis.app.ui.chat.ContextUsageHint? = null,
+    /** [T-orion-presence] Mood computed by the screen; null = derive from recording. */
+    orionMood: OrionMood? = null,
+    /** [T-orion-presence] Answer-chunk counter, so the orb beats while replying. */
+    orionPulse: Int = 0,
     asrStalled: Boolean = false,
     onSwitchModel: () -> Unit = {},
 ) {
@@ -972,6 +983,8 @@ private fun ExpandedContent(
         OrionOrb(
             levels = levels,
             isActive = isRecording,
+            mood = orionMood ?: if (isRecording) OrionMood.LISTENING else OrionMood.STANDBY,
+            pulse = orionPulse,
             diameter = 104.dp,
         )
 

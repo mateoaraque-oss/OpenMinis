@@ -2729,4 +2729,8 @@
     <string name="orion_assistant_active">Orion ya es tu asistente</string>
     <string name="orion_accessibility">Control de pantalla y acciones</string>
     <string name="orion_accessibility_subtitle">Permite a Orion ver la pantalla y tocar por ti</string>
+    <!-- [T-orion-presence] Live state labels under the chat top bar. -->
+    <string name="orion_state_listening">Listening&#8230;</string>
+    <string name="orion_state_thinking">Thinking&#8230;</string>
+    <string name="orion_state_speaking">Answering&#8230;</string>
 </resources>
