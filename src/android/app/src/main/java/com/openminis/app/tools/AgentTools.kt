@@ -59,6 +59,10 @@ object AgentTools {
             add(ReadImageTool.definition())
         }
         if (browserEnabled) add(browserUseDefinition())
+        // [T-orion-web-search] Ranked web results without driving a WebView.
+        // Independent of browserEnabled: it is a plain HTTP call, and the
+        // model needs it most precisely when the heavy browser stack is off.
+        add(WebSearchTool.definition())
         if (memoryEnabled) {
             if (!isHelper) add(memoryWriteDefinition())
             add(memoryGetDefinition())

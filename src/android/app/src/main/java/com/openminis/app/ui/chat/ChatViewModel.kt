@@ -14217,6 +14217,10 @@ class ChatViewModel(
                     )
                 }
             "memory_get" -> executeMemoryGetTool(argsJson)
+            // [T-orion-web-search] Plain HTTP search; safe to run inside the
+            // tool batch without touching the browser stack.
+            com.openminis.app.tools.WebSearchTool.NAME ->
+                com.openminis.app.tools.WebSearchTool.execute(argsJson)
             // [T-port-user-ask] Card in the chat, then wait for the user.
             // [T-user-ask-exposure-guard] A run that does not offer the tool (the
             // setting is off, a helper / sub agent, a scheduled or other headless
@@ -16356,6 +16360,14 @@ Memory system (currently DISABLED):
         } else ""
         val browserPromptBullet = if (browserToolEnabled) """- browser_use: Web browsing (navigate, screenshot, click, type, get_text, scroll, scroll_and_collect, get_readable, get_backbone, fetch, etc.). Starts with a desktop Chrome user agent. Use screenshot to see the page.
   当 browser_use 触达 Google 登录 / OAuth 页（accounts.google.com、signin.google.com、myaccount.google.com、oauth2.googleapis.com 等）或网页返回 "disallowed_useragent" / 403 包含 "browser is not secure" 字样时，**不要重试或尝试登录** — Google 永久禁止 in-app WebView 完成登录，重试只会浪费 turn。改为告诉用户："此页面需要在系统 Chrome 完成登录" 并给出可点击的 Markdown link [在 Chrome 中打开](https://accounts.google.com/...)。点该 link 时 app 会跳出 Custom Tab；用户在 Chrome 完成操作后，请他**把所需结果（邮件正文 / 文档摘要 / 表格数据）粘贴回 chat**，你再继续帮他处理。这是 Android 平台限制，不是 bug。${toolListMemoryBullets}""" else ""
+        // [T-orion-web-search] web_search is registered unconditionally, so
+        // its bullet is too. Without it the model reaches for browser_use
+        // first and burns turns on consent walls; the tool definition alone
+        // is not enough to beat that habit.
+        val webSearchPromptBullet =
+            "- web_search: Ranked web results (title, URL, snippet) over plain HTTPS — no browser, no page load. " +
+                "Use it FIRST for anything current, factual, or after your cutoff; follow up with browser_use on the " +
+                "best URL only when you need the full page.\n"
         // [T-port-user-ask] The only user_ask text in the system prompt, and
         // only when the tool is in this run (iOS 92e19f6ae). Everything else
         // travels with the tool definition itself.
@@ -16376,7 +16388,7 @@ Available tools:
 - file_read: Read file contents (faster than cat).
 - file_write: Create new files or overwrite existing files (faster than echo/tee).
 - file_edit: Edit existing files with exact string replacement (old_string → new_string). Preferred over file_write for modifications — always file_read first.
-${browserPromptBullet}${userAskPromptLine}
+${browserPromptBullet}${webSearchPromptBullet}${userAskPromptLine}
 
 Shared directory /var/minis/ (bidirectional read/write between shell and app):
   /var/minis/attachments/ — Media files (images, audio, video). Display inline with ![desc](minis://attachments/filename).
