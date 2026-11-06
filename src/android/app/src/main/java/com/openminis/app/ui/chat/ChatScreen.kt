@@ -637,17 +637,29 @@ fun ChatScreen(
     val orionAnswering = isStreaming &&
         lastOrionMessage?.role == "assistant" &&
         lastOrionMessage.content.isNotEmpty()
+    // [T-orion-presence] Read-aloud has no chunk stream to hook, so give the
+    // orb a slow metronome while TTS is actually emitting audio. Without it
+    // the sphere would go flat the moment the text stopped streaming, which
+    // is exactly when Orion starts talking.
+    val orionTtsSpeaking by com.openminis.app.speech.VoiceOutputState.isSpeaking.collectAsState()
+    var orionTtsTick by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    LaunchedEffect(orionTtsSpeaking) {
+        while (orionTtsSpeaking) {
+            kotlinx.coroutines.delay(240)
+            orionTtsTick++
+        }
+    }
     val orionMood = when {
         orionSttState == com.openminis.app.speech.RecognitionState.RECORDING ||
             orionSttState == com.openminis.app.speech.RecognitionState.STARTING ->
             OrionMood.LISTENING
-        orionAnswering -> OrionMood.SPEAKING
+        orionAnswering || orionTtsSpeaking -> OrionMood.SPEAKING
         isStreaming -> OrionMood.THINKING
         else -> OrionMood.STANDBY
     }
     // Each chunk changes the answer length; that integer is the orb's pulse
     // counter, so the sphere beats once per arriving piece of the reply.
-    val orionPulse = if (orionAnswering) (lastOrionMessage?.content?.length ?: 0) else 0
+    val orionBeat = if (orionAnswering) (lastOrionMessage?.content?.length ?: 0) else orionTtsTick
     // [T-android-jankdiag] Tag frame summaries with "a reply is streaming".
     LaunchedEffect(isStreaming) { com.openminis.app.diagnostics.JankDiag.setStreaming(isStreaming) }
     // [T-android-jankdiag] A chat opens inside the sessions route on a phone: name it.
@@ -3793,9 +3805,9 @@ fun ChatScreen(
             OrionPresenceStrip(
                 listening = orionMood == OrionMood.LISTENING && !orionVoiceMode,
                 streaming = isStreaming,
-                answering = orionAnswering,
+                answering = orionAnswering || orionTtsSpeaking,
                 levels = orionLevels,
-                pulseKey = orionPulse,
+                pulseKey = orionBeat,
             )
         } },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -6759,7 +6771,7 @@ fun ChatScreen(
                             // focus-driven lifecycle.
                             contextUsageHint = contextUsageHint,
                             orionMood = orionMood,
-                            orionPulse = orionPulse,
+                            orionPulse = orionBeat,
                             onEditProvider = onEditProviderClick,
                         )
                     } else if (recIsRecording) {
