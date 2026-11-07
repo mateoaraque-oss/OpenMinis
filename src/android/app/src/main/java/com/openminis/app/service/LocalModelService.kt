@@ -23,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 /**
@@ -35,9 +36,11 @@ import kotlinx.coroutines.launch
  * the process priority, holds a partial wake lock so generation continues with
  * the screen off, and gives the user a notification with a stop action.
  *
- * `dataSync` is the honest type here. The 6 h/24 h cap is acceptable for a
- * local model — if the user runs Orion for six continuous hours, the cap is
- * the least of the battery's problems — and it is already declared.
+ * `mediaPlayback` follows the same decision already made for
+ * [AgentForegroundService]: `dataSync` has a 6 h/24 h cumulative cap on
+ * Android 14+ and the system force-kills the process when it is reached, which
+ * would be a crash in the middle of a conversation. A sideloaded app is not
+ * bound by the Play policy about playing actual media.
  */
 class LocalModelService : Service() {
 
@@ -112,7 +115,7 @@ class LocalModelService : Service() {
         )
         runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+                startForeground(NOTIFICATION_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
             } else {
                 startForeground(NOTIFICATION_ID, n)
             }

@@ -521,11 +521,14 @@
 
         <!-- [T-orion-local-model] Keeps the bundled llama.cpp server alive
              while the app is backgrounded, with a stop action in the
-             notification. dataSync: it is a finite local workload. -->
+             notification. mediaPlayback, not dataSync: dataSync has the
+             6h/24h cap that kills the process mid-session (same reason
+             AgentForegroundService moved), and a chat with the local model
+             is exactly the long-running workload this app ships. -->
         <service
             android:name=".service.LocalModelService"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="mediaPlayback" />
 
         <!-- [T-oauth-wait-fgs] Keeps the process out of the cached-apps
              freezer while an OAuth sign-in waits for its localhost redirect
