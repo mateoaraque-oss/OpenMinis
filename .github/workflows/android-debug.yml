@@ -127,42 +127,53 @@ jobs:
             "https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_TAG}/${ARCHIVE}"
           mkdir -p /tmp/llama
           tar -xzf "/tmp/${ARCHIVE}" -C /tmp/llama
-          SRC="/tmp/llama/llama-${LLAMA_TAG}"
+          echo "--- archive layout ---"
+          find /tmp/llama -maxdepth 3 -type f | head -n 40
+
+          # The tarball's internal layout has changed between releases
+          # (bin/ versus flat). Locate the binary instead of assuming it.
+          SERVER=$(find /tmp/llama -type f -name llama-server | head -n 1)
+          test -n "$SERVER"
+          SRC=$(dirname "$SERVER")
+          echo "using engine dir: $SRC"
+
           DST="src/android/app/src/main/jniLibs/arm64-v8a"
           mkdir -p "$DST"
 
-          # llama-server itself is a 7 KB stub; the body lives in
-          # libllama-server-impl.so. Rename to lib*.so so AGP packages and the
-          # installer extracts it.
-          cp "$SRC/llama-server" "$DST/libllama-server.so"
-          for lib in \
-            libllama-server-impl.so \
-            libllama-common.so \
-            libllama.so \
-            libmtmd.so \
-            libggml.so \
-            libggml-base.so; do
-            cp "$SRC/$lib" "$DST/$lib"
+          # Copy every shared object the release ships, not a hand-written
+          # list: a missing libc++_shared / libomp / ggml variant is a runtime
+          # "library not found" long after CI went green.
+          shopt -s nullglob
+          bundled=()
+          for so in "$SRC"/*.so; do
+            base=$(basename "$so")
+            cp "$so" "$DST/$base"
+            bundled+=("$DST/$base")
           done
-          # ggml dlopens the best CPU variant for the SoC at runtime.
-          cp "$SRC"/libggml-cpu-android_*.so "$DST"/
+          shopt -u nullglob
+          test "${#bundled[@]}" -gt 0
+
+          # llama-server itself is a small stub; the body lives in
+          # libllama-server-impl.so. Rename to lib*.so so AGP packages and the
+          # installer extracts it. Copied last so it wins over any same-named
+          # library from the loop above.
+          cp "$SERVER" "$DST/libllama-server.so"
+          bundled+=("$DST/libllama-server.so")
+
+          echo "--- copied ---"
+          printf '%s\n' "${bundled[@]}"
 
           STRIP="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
           test -x "$STRIP"
-          for so in "$DST"/libllama-server.so \
-                    "$DST"/libllama-server-impl.so \
-                    "$DST"/libllama-common.so \
-                    "$DST"/libllama.so \
-                    "$DST"/libmtmd.so \
-                    "$DST"/libggml.so \
-                    "$DST"/libggml-base.so \
-                    "$DST"/libggml-cpu-android_*.so; do
+          for so in "${bundled[@]}"; do
             "$STRIP" --strip-unneeded "$so"
           done
           chmod +x "$DST/libllama-server.so"
 
           mkdir -p src/android/app/src/main/assets
-          cp "$SRC/LICENSE" src/android/app/src/main/assets/llama.cpp-LICENSE.txt
+          LICENSE_FILE=$(find /tmp/llama -type f -name LICENSE | head -n 1)
+          test -n "$LICENSE_FILE"
+          cp "$LICENSE_FILE" src/android/app/src/main/assets/llama.cpp-LICENSE.txt
 
           echo "--- bundled ---"
           ls -lh "$DST"/libllama-*.so "$DST"/libggml*.so
