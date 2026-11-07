@@ -2747,6 +2747,7 @@
     <string name="orion_local_stop">Stop</string>
     <string name="orion_local_open_chat">Open a chat</string>
     <string name="orion_local_connected">Orion is using this model</string>
+    <string name="orion_local_link_failed">The model is running but Orion could not select it. Open Settings > Providers and pick it.</string>
     <string name="orion_local_allow_files">Orion needs to see your files</string>
     <string name="orion_local_allow_files_body">To run the .gguf you already downloaded, Orion needs All files access. Nothing is uploaded.</string>
     <string name="orion_local_allow_files_action">Allow access</string>

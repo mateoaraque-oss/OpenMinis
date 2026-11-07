@@ -2017,6 +2017,7 @@
     <string name="orion_local_stop">Detener</string>
     <string name="orion_local_open_chat">Abrir un chat</string>
     <string name="orion_local_connected">Orion ya usa este modelo</string>
+    <string name="orion_local_link_failed">El modelo está en marcha pero Orion no pudo seleccionarlo. Ve a Ajustes > Proveedores y elígelo.</string>
     <string name="orion_local_allow_files">Orion necesita ver tus archivos</string>
     <string name="orion_local_allow_files_body">Para ejecutar el .gguf que ya descargaste, Orion necesita acceso a todos los archivos. No se sube nada.</string>
     <string name="orion_local_allow_files_action">Permitir acceso</string>

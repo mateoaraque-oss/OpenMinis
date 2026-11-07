@@ -32,13 +32,18 @@ object LocalModelProvider {
      */
     private const val API_KEY = "sk-orion-local"
 
-    fun ensureProvider(
+    suspend fun ensureProvider(
         repo: ProviderRepository,
         port: Int,
         modelId: String,
         displayName: String,
         contextWindow: Int = 4096,
-    ): ModelEntry {
+    ): ModelEntry? {
+        // The initial config load is async. Reading repo.instances before it
+        // finishes would see an empty list and create a duplicate provider on
+        // the first tap after a cold start.
+        repo.awaitConfigLoaded()
+
         val baseUrl = "http://127.0.0.1:$port"
 
         var instance = repo.instances.firstOrNull {
@@ -65,26 +70,37 @@ object LocalModelProvider {
             }
         }
 
-        val existing = repo.entriesFor(instance.id)
+        var entry = repo.entriesFor(instance.id)
             .firstOrNull { it.baseModel.id == modelId && !it.isHidden }
-        val entry = existing ?: ModelEntry(
-            providerInstanceId = instance.id,
-            baseModel = LLMModel(
-                id = modelId,
-                displayName = displayName,
-                provider = LABEL,
-                contextWindow = contextWindow,
-                maxOutputTokens = 2048,
-                supportsReasoning = false,
-            ),
-            // Custom so a later /v1/models refresh carries this uuid forward
-            // instead of replacing the entry out from under a selected model.
-            isCustom = true,
-        ).also { repo.addEntry(it) }
+        if (entry == null) {
+            repo.addEntry(
+                ModelEntry(
+                    providerInstanceId = instance.id,
+                    baseModel = LLMModel(
+                        id = modelId,
+                        displayName = displayName,
+                        provider = LABEL,
+                        contextWindow = contextWindow,
+                        maxOutputTokens = 2048,
+                        supportsReasoning = false,
+                    ),
+                    // Custom so a later /v1/models refresh carries this entry
+                    // forward instead of replacing it out from under a
+                    // selected model.
+                    isCustom = true,
+                ),
+            )
+            // Re-read: the store canonicalises entry ids to
+            // "{instanceId}/{modelId}" on save, so the id of the object we
+            // just built is already stale and would never match
+            // lastUsedVisibleEntry().
+            entry = repo.entriesFor(instance.id)
+                .firstOrNull { it.baseModel.id == modelId && !it.isHidden }
+        }
 
         // New chats fall back to the last-used entry; setting it here is what
         // makes the next message go to the phone instead of the cloud.
-        repo.lastUsedEntryId = entry.id
+        if (entry != null) repo.lastUsedEntryId = entry.id
         return entry
     }
 }

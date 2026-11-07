@@ -154,7 +154,7 @@ fun LocalModelScreen(
     LaunchedEffect(running?.modelId, running?.port) {
         val r = running ?: return@LaunchedEffect
         if (linkedModelId == r.modelId) return@LaunchedEffect
-        withContext(Dispatchers.IO) {
+        val linked = withContext(Dispatchers.IO) {
             LocalModelProvider.ensureProvider(
                 repo = providerRepository,
                 port = r.port,
@@ -163,8 +163,15 @@ fun LocalModelScreen(
                 contextWindow = contextSize,
             )
         }
-        linkedModelId = r.modelId
-        snackbar.showSnackbar(context.getString(R.string.orion_local_connected))
+        // Only claim success when the entry is actually in the store and
+        // selected: the button below depends on this.
+        linkedModelId = if (linked != null) r.modelId else null
+        snackbar.showSnackbar(
+            context.getString(
+                if (linked != null) R.string.orion_local_connected
+                else R.string.orion_local_link_failed,
+            ),
+        )
     }
 
     fun start(model: LocalModelFile) {
