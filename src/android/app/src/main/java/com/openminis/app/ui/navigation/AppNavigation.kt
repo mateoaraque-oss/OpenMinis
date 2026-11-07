@@ -96,6 +96,8 @@ object Routes {
     /** [T-android-provider-voice] Read-only shadow Voice Service detail. */
     const val SHADOW_VOICE_DETAIL = "voice_service/{instanceId}"
     const val MODEL_GROUPS = "model_groups"
+    /** [T-orion-local-model] Run a .gguf that already lives on the phone. */
+    const val LOCAL_MODEL = "local_model"
     const val MODEL_GROUP_DETAIL = "model_group/{groupId}"
     const val ADD_MODELS_TO_GROUP = "add_models_to_group/{groupId}"
     /** T185: picker that adds model *entries* to the agent-loop set. */
@@ -648,6 +650,7 @@ fun AppNavigation(
                 onBack = { navController.safePopBackStack() },
                 onProvidersClick = { navController.safeNavigate(Routes.PROVIDER_LIST) },
                 onModelGroupsClick = { navController.safeNavigate(Routes.MODEL_GROUPS) },
+                onLocalModelClick = { navController.safeNavigate(Routes.LOCAL_MODEL) },
                 onRootfsClick = { navController.safeNavigate(Routes.STORAGE) },
                 onBackupClick = { navController.safeNavigate(Routes.BACKUP) },
                 onEnvVarsClick = { navController.safeNavigate(Routes.ENV_VARS) },
@@ -969,6 +972,23 @@ fun AppNavigation(
                 },
                 onVoiceServiceClick = { id ->
                     navController.safeNavigate(Routes.shadowVoiceDetail(id))
+                },
+            )
+        }
+
+        composable(Routes.LOCAL_MODEL) {
+            com.openminis.app.ui.settings.LocalModelScreen(
+                providerRepository = providerRepository,
+                onBack = { navController.safePopBackStack() },
+                onOpenChat = {
+                    // The provider + entry are already selected; a fresh chat
+                    // will pick them up through lastUsedEntryId.
+                    navController.safeNavigate(
+                        Routes.chat("__new__" + java.util.UUID.randomUUID()),
+                    ) {
+                        popUpTo(Routes.SESSION_LIST) { inclusive = false }
+                        launchSingleTop = true
+                    }
                 },
             )
         }

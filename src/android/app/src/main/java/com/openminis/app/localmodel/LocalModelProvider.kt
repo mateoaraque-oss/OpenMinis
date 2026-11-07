@@ -1,0 +1,90 @@
+package com.openminis.app.localmodel
+
+import com.openminis.app.data.model.LLMModel
+import com.openminis.app.data.model.ModelEntry
+import com.openminis.app.data.model.ProviderCredential
+import com.openminis.app.data.model.ProviderInstance
+import com.openminis.app.data.model.ProviderType
+import com.openminis.app.data.repository.ProviderRepository
+import java.util.UUID
+
+/**
+ * [T-orion-local-model] Wires a running llama-server into the provider store.
+ *
+ * The whole point of the feature is "one tap": after the engine answers on
+ * loopback, the app must already have a provider, a model entry, and that
+ * entry selected, with no form to fill in. This object owns that wiring and is
+ * idempotent, so tapping Start twice (or restarting on a different port)
+ * updates the existing provider instead of piling up duplicates.
+ *
+ * The instance is an ordinary OpenAI-compatible provider pointing at
+ * `http://127.0.0.1:<port>`, which means every existing feature — model
+ * picker, groups, tool calls, subagents — works unchanged.
+ */
+object LocalModelProvider {
+
+    const val LABEL = "Orion local"
+
+    /**
+     * llama-server ignores the key, but the credential store and the routing
+     * layer both behave better with a non-empty value; the empty-key compat
+     * path exists for user-entered endpoints, not for ours.
+     */
+    private const val API_KEY = "sk-orion-local"
+
+    fun ensureProvider(
+        repo: ProviderRepository,
+        port: Int,
+        modelId: String,
+        displayName: String,
+        contextWindow: Int = 4096,
+    ): ModelEntry {
+        val baseUrl = "http://127.0.0.1:$port"
+
+        var instance = repo.instances.firstOrNull {
+            it.label.equals(LABEL, ignoreCase = true)
+        }
+        if (instance == null) {
+            instance = ProviderInstance(
+                id = UUID.randomUUID().toString(),
+                label = LABEL,
+                providerType = ProviderType.openAI,
+                credentialType = ProviderCredential.apiKey,
+                customBaseURL = baseUrl,
+                appendV1Suffix = true,
+            )
+            repo.addInstance(instance)
+            repo.saveApiKey(instance.id, API_KEY)
+        } else {
+            if (instance.customBaseURL != baseUrl) {
+                instance.customBaseURL = baseUrl
+                repo.updateInstance(instance)
+            }
+            if (repo.loadApiKey(instance.id).isNullOrBlank()) {
+                repo.saveApiKey(instance.id, API_KEY)
+            }
+        }
+
+        val existing = repo.entriesFor(instance.id)
+            .firstOrNull { it.baseModel.id == modelId && !it.isHidden }
+        val entry = existing ?: ModelEntry(
+            providerInstanceId = instance.id,
+            baseModel = LLMModel(
+                id = modelId,
+                displayName = displayName,
+                provider = LABEL,
+                contextWindow = contextWindow,
+                maxOutputTokens = 2048,
+                supportsReasoning = false,
+            ),
+            // Custom so a later /v1/models refresh carries this uuid forward
+            // instead of replacing the entry out from under a selected model.
+            isCustom = true,
+        ).also { repo.addEntry(it) }
+
+        // New chats fall back to the last-used entry; setting it here is what
+        // makes the next message go to the phone instead of the cloud.
+        repo.lastUsedEntryId = entry.id
+        return entry
+    }
+}

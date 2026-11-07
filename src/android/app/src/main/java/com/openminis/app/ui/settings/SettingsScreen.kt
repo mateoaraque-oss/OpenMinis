@@ -23,6 +23,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Lan
+import androidx.compose.material.icons.outlined.Memory
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Router
 import androidx.compose.material.icons.outlined.VpnLock
@@ -86,6 +87,8 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onProvidersClick: () -> Unit,
     onModelGroupsClick: () -> Unit,
+    /** [T-orion-local-model] Settings > Orion > Local model. */
+    onLocalModelClick: () -> Unit = {},
     onRootfsClick: () -> Unit = {},
     onBackupClick: () -> Unit = {},
     onEnvVarsClick: () -> Unit = {},
@@ -206,6 +209,15 @@ fun SettingsScreen(
                                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                         )
                     },
+                )
+                // [T-orion-local-model] One tap: pick the .gguf already on the
+                // phone, run it, and Orion switches to it.
+                SettingsItem(
+                    icon = Icons.Outlined.Memory,
+                    iconColor = Color(0xFF3FD4FF),
+                    title = stringResource(R.string.orion_local_model),
+                    subtitle = stringResource(R.string.orion_local_model_subtitle),
+                    onClick = onLocalModelClick,
                     showDivider = false,
                 )
             }

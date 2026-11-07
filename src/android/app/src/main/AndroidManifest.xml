@@ -519,6 +519,14 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- [T-orion-local-model] Keeps the bundled llama.cpp server alive
+             while the app is backgrounded, with a stop action in the
+             notification. dataSync: it is a finite local workload. -->
+        <service
+            android:name=".service.LocalModelService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
         <!-- [T-oauth-wait-fgs] Keeps the process out of the cached-apps
              freezer while an OAuth sign-in waits for its localhost redirect
              (the browser is on top, so Minis is a background process). Runs

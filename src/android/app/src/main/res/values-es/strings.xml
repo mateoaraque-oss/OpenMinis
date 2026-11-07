@@ -1994,4 +1994,38 @@
     <string name="orion_state_listening">Escuchando&#8230;</string>
     <string name="orion_state_thinking">Pensando&#8230;</string>
     <string name="orion_state_speaking">Respondiendo&#8230;</string>
+
+    <!-- [T-orion-assistant] Ajustes > Orion. -->
+    <string name="orion_section_title">Orion</string>
+    <string name="orion_section_footer">Orion puede sustituir al asistente de Google y controlar el teléfono por ti.</string>
+    <string name="orion_become_assistant">Ser el asistente del teléfono</string>
+    <string name="orion_become_assistant_subtitle">Mantén pulsado inicio para hablar con Orion</string>
+    <string name="orion_assistant_active">Orion ya es tu asistente</string>
+    <string name="orion_accessibility">Control de pantalla y acciones</string>
+    <string name="orion_accessibility_subtitle">Permite a Orion ver la pantalla y tocar por ti</string>
+
+    <!-- [T-orion-local-model] Ajustes > Orion > Modelo local. -->
+    <string name="orion_local_model">Modelo local</string>
+    <string name="orion_local_model_subtitle">Ejecuta un .gguf que ya tengas en el teléfono, sin servidor</string>
+    <string name="orion_local_models_found">MODELOS EN ESTE TELÉFONO</string>
+    <string name="orion_local_scan">Buscar</string>
+    <string name="orion_local_none">No hay ningún .gguf en Descargas, Documentos ni Models.</string>
+    <string name="orion_local_idle">Ningún modelo en marcha</string>
+    <string name="orion_local_starting">Cargando modelo&#8230;</string>
+    <string name="orion_local_running">Ejecutándose en este teléfono</string>
+    <string name="orion_local_failed">No se pudo arrancar</string>
+    <string name="orion_local_stop">Detener</string>
+    <string name="orion_local_open_chat">Abrir un chat</string>
+    <string name="orion_local_connected">Orion ya usa este modelo</string>
+    <string name="orion_local_allow_files">Orion necesita ver tus archivos</string>
+    <string name="orion_local_allow_files_body">Para ejecutar el .gguf que ya descargaste, Orion necesita acceso a todos los archivos. No se sube nada.</string>
+    <string name="orion_local_allow_files_action">Permitir acceso</string>
+    <string name="orion_local_manual">O escribe la ruta completa de un .gguf</string>
+    <string name="orion_local_bad_path">Esa ruta no es un .gguf legible</string>
+    <string name="orion_local_advanced">Avanzado</string>
+    <string name="orion_local_context">Ventana de contexto</string>
+    <string name="orion_local_threads">Hilos de CPU</string>
+    <string name="orion_local_mmap">Mapear el archivo del modelo en memoria</string>
+    <string name="orion_local_log">Ver registro del motor</string>
+    <string name="orion_local_size_hint">Los modelos de 1 a 3B en Q4 van mejor con 8 GB de RAM.</string>
 </resources>

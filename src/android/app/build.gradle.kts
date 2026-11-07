@@ -78,6 +78,15 @@ android {
         }
     }
 
+    packaging {
+        jniLibs {
+            // [T-orion-local-model] llama-server ships as an executable
+            // renamed to lib*.so. It must be EXTRACTED to nativeLibraryDir:
+            // that is the only location a targetSdk-35 app may exec from.
+            useLegacyPackaging = true
+        }
+    }
+
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")

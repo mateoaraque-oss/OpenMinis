@@ -114,6 +114,60 @@ jobs:
           ./scripts/prepare_android_sandbox.sh
           ls -lh src/android/app/src/main/assets/alpine-minirootfs.tar.gz
 
+      - name: Bundle llama.cpp server (Android arm64)
+        run: |
+          set -euo pipefail
+          # [T-orion-local-model] Official prebuilt Android binaries. Shipping
+          # them in jniLibs (not assets) is what makes exec legal for a
+          # targetSdk-35 app: the native lib dir is installed read-only.
+          LLAMA_TAG=b12182
+          ARCHIVE="llama-${LLAMA_TAG}-bin-android-arm64.tar.gz"
+          curl -fL --retry 3 --retry-delay 5 \
+            -o "/tmp/${ARCHIVE}" \
+            "https://github.com/ggml-org/llama.cpp/releases/download/${LLAMA_TAG}/${ARCHIVE}"
+          mkdir -p /tmp/llama
+          tar -xzf "/tmp/${ARCHIVE}" -C /tmp/llama
+          SRC="/tmp/llama/llama-${LLAMA_TAG}"
+          DST="src/android/app/src/main/jniLibs/arm64-v8a"
+          mkdir -p "$DST"
+
+          # llama-server itself is a 7 KB stub; the body lives in
+          # libllama-server-impl.so. Rename to lib*.so so AGP packages and the
+          # installer extracts it.
+          cp "$SRC/llama-server" "$DST/libllama-server.so"
+          for lib in \
+            libllama-server-impl.so \
+            libllama-common.so \
+            libllama.so \
+            libmtmd.so \
+            libggml.so \
+            libggml-base.so; do
+            cp "$SRC/$lib" "$DST/$lib"
+          done
+          # ggml dlopens the best CPU variant for the SoC at runtime.
+          cp "$SRC"/libggml-cpu-android_*.so "$DST"/
+
+          STRIP="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
+          test -x "$STRIP"
+          for so in "$DST"/libllama-server.so \
+                    "$DST"/libllama-server-impl.so \
+                    "$DST"/libllama-common.so \
+                    "$DST"/libllama.so \
+                    "$DST"/libmtmd.so \
+                    "$DST"/libggml.so \
+                    "$DST"/libggml-base.so \
+                    "$DST"/libggml-cpu-android_*.so; do
+            "$STRIP" --strip-unneeded "$so"
+          done
+          chmod +x "$DST/libllama-server.so"
+
+          mkdir -p src/android/app/src/main/assets
+          cp "$SRC/LICENSE" src/android/app/src/main/assets/llama.cpp-LICENSE.txt
+
+          echo "--- bundled ---"
+          ls -lh "$DST"/libllama-*.so "$DST"/libggml*.so
+          du -sh "$DST"
+
       - name: Build rclone AAR
         run: |
           chmod +x deps/build_rclone_android.sh

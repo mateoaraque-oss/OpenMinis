@@ -2723,14 +2723,39 @@
     <string name="mcp_dcr_unreadable">%1$s returned data that could not be read.</string>
     <!-- [T-orion-assistant] Orion settings section: assistant role + screen control. -->
     <string name="orion_section_title">Orion</string>
-    <string name="orion_section_footer">Orion puede sustituir al asistente de Google y controlar el telefono por ti.</string>
-    <string name="orion_become_assistant">Ser el asistente del telefono</string>
-    <string name="orion_become_assistant_subtitle">Manten pulsado inicio para hablar con Orion</string>
-    <string name="orion_assistant_active">Orion ya es tu asistente</string>
-    <string name="orion_accessibility">Control de pantalla y acciones</string>
-    <string name="orion_accessibility_subtitle">Permite a Orion ver la pantalla y tocar por ti</string>
+    <string name="orion_section_footer">Orion can replace Google Assistant and control your phone for you.</string>
+    <string name="orion_become_assistant">Become your phone&#8217;s assistant</string>
+    <string name="orion_become_assistant_subtitle">Hold the home button to talk to Orion</string>
+    <string name="orion_assistant_active">Orion is now your assistant</string>
+    <string name="orion_accessibility">Screen control and actions</string>
+    <string name="orion_accessibility_subtitle">Let Orion see the screen and tap for you</string>
     <!-- [T-orion-presence] Live state labels under the chat top bar. -->
     <string name="orion_state_listening">Listening&#8230;</string>
     <string name="orion_state_thinking">Thinking&#8230;</string>
     <string name="orion_state_speaking">Answering&#8230;</string>
+
+    <!-- [T-orion-local-model] Settings > Orion > Local model. -->
+    <string name="orion_local_model">Local model</string>
+    <string name="orion_local_model_subtitle">Run a .gguf already on your phone, no server</string>
+    <string name="orion_local_models_found">MODELS ON THIS PHONE</string>
+    <string name="orion_local_scan">Search</string>
+    <string name="orion_local_none">No .gguf found in Download, Documents or Models.</string>
+    <string name="orion_local_idle">No model running</string>
+    <string name="orion_local_starting">Loading model&#8230;</string>
+    <string name="orion_local_running">Running on this phone</string>
+    <string name="orion_local_failed">Could not start</string>
+    <string name="orion_local_stop">Stop</string>
+    <string name="orion_local_open_chat">Open a chat</string>
+    <string name="orion_local_connected">Orion is using this model</string>
+    <string name="orion_local_allow_files">Orion needs to see your files</string>
+    <string name="orion_local_allow_files_body">To run the .gguf you already downloaded, Orion needs All files access. Nothing is uploaded.</string>
+    <string name="orion_local_allow_files_action">Allow access</string>
+    <string name="orion_local_manual">Or type the full path to a .gguf</string>
+    <string name="orion_local_bad_path">That path is not a readable .gguf</string>
+    <string name="orion_local_advanced">Advanced</string>
+    <string name="orion_local_context">Context window</string>
+    <string name="orion_local_threads">CPU threads</string>
+    <string name="orion_local_mmap">Memory-map the model file</string>
+    <string name="orion_local_log">Show engine log</string>
+    <string name="orion_local_size_hint">1&#8211;3B Q4 models run best on 8 GB of RAM.</string>
 </resources>
