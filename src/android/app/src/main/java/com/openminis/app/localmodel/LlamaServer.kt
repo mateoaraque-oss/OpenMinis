@@ -255,6 +255,10 @@ object LlamaServer {
             pb.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile(context)))
             val env = pb.environment()
             env["LD_LIBRARY_PATH"] = nativeDir
+            // ggml dlopens the CPU/backend variants from the executable's own
+            // directory; stating it explicitly also covers the linker64
+            // fallback, where /proc/self/exe points at the linker instead.
+            env["GGML_BACKEND_PATH"] = nativeDir
             env["HOME"] = context.filesDir.absolutePath
             env["TMPDIR"] = context.cacheDir.absolutePath
             return pb.start()
