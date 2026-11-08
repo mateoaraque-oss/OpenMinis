@@ -34,6 +34,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -66,14 +67,19 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.openminis.app.R
 import com.openminis.app.localmodel.LlamaServer
 import com.openminis.app.localmodel.LocalModelConfig
+import com.openminis.app.localmodel.CatalogModel
+import com.openminis.app.localmodel.DeviceCapacity
 import com.openminis.app.localmodel.LocalModelFile
 import com.openminis.app.localmodel.LocalModelProvider
 import com.openminis.app.localmodel.LocalModelScanner
 import com.openminis.app.localmodel.LocalServerStatus
+import com.openminis.app.localmodel.ModelCatalog
+import com.openminis.app.localmodel.ModelDownloader
 import com.openminis.app.data.repository.ProviderRepository
 import com.openminis.app.ui.components.OrionMood
 import com.openminis.app.ui.components.OrionOrb
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -114,6 +120,19 @@ fun LocalModelScreen(
     var manualPath by remember { mutableStateOf("") }
     var showLog by remember { mutableStateOf(false) }
     var linkedModelId by remember { mutableStateOf<String?>(null) }
+
+    // [T-orion-model-catalog] The download card is the first-run path when the
+    // phone has no .gguf yet. The catalog is computed once per screen: the
+    // recommendation depends only on total RAM and free storage.
+    val capacity = remember { ModelCatalog.capacity(context) }
+    val recommended = remember(capacity) { ModelCatalog.recommended(context) }
+    val alternatives = remember(capacity, recommended.id) {
+        ModelCatalog.alternatives(context, recommended)
+    }
+    var download by remember { mutableStateOf(ModelDownloader.status(context)) }
+    var downloadBusy by remember { mutableStateOf(false) }
+    var consumedDownloadId by remember { mutableStateOf(-1L) }
+    var showCatalog by remember { mutableStateOf(false) }
 
     val status by LlamaServer.status.collectAsState()
 
@@ -190,6 +209,64 @@ fun LocalModelScreen(
                 useMmap = useMmap,
             ),
         )
+    }
+
+    fun beginDownload(model: CatalogModel) {
+        if (downloadBusy) return
+        downloadBusy = true
+        scope.launch {
+            val id = withContext(Dispatchers.IO) { ModelDownloader.start(context, model) }
+            downloadBusy = false
+            if (id == null) {
+                snackbar.showSnackbar(context.getString(R.string.orion_model_download_failed))
+            } else {
+                download = ModelDownloader.DownloadState(
+                    downloadId = id,
+                    model = model,
+                    bytes = 0L,
+                    total = model.sizeBytes,
+                    status = ModelDownloader.Status.RUNNING,
+                )
+            }
+        }
+    }
+
+    // Poll DownloadManager while a file is in flight. Keyed on the status so
+    // the loop stops as soon as the download leaves RUNNING.
+    LaunchedEffect(download?.downloadId, download?.status) {
+        val current = download ?: return@LaunchedEffect
+        if (current.status != ModelDownloader.Status.RUNNING) return@LaunchedEffect
+        while (true) {
+            delay(800)
+            val next = withContext(Dispatchers.IO) { ModelDownloader.status(context) }
+            download = next
+            if (next == null || next.status != ModelDownloader.Status.RUNNING) break
+        }
+    }
+
+    // A finished download becomes a running model with no extra tap: rescan,
+    // pick the new file and start the engine. The provider is linked by the
+    // `running` effect above, and `start` also records it for next launch.
+    LaunchedEffect(download?.downloadId, download?.status) {
+        val finished = download ?: return@LaunchedEffect
+        if (finished.status != ModelDownloader.Status.DONE) return@LaunchedEffect
+        if (consumedDownloadId == finished.downloadId) return@LaunchedEffect
+        consumedDownloadId = finished.downloadId
+        val found = withContext(Dispatchers.IO) { LocalModelScanner.scan(context) }
+        models = found
+        hasScanned = true
+        val target = found.firstOrNull {
+            it.file.name.equals(finished.model.fileName, ignoreCase = true)
+        } ?: ModelCatalog.localFile(context, finished.model)
+            ?.let { LocalModelScanner.fromPath(it.absolutePath) }
+        if (target != null) {
+            start(target)
+            snackbar.showSnackbar(context.getString(R.string.orion_model_downloaded))
+            ModelDownloader.clear(context)
+            download = null
+        } else {
+            snackbar.showSnackbar(context.getString(R.string.orion_model_download_failed))
+        }
     }
 
     Scaffold(
@@ -269,6 +346,26 @@ fun LocalModelScreen(
                 )
             }
 
+            // [T-orion-model-catalog] No model on the phone? Offer the one
+            // Orion recommends for this device instead of sending the user to
+            // a browser to guess which GGUF is safe.
+            if (models.isEmpty() || showCatalog) {
+                Spacer(Modifier.height(12.dp))
+                ModelCatalogCard(
+                    recommended = recommended,
+                    alternatives = alternatives,
+                    capacity = capacity,
+                    download = download,
+                    busy = downloadBusy,
+                    onDownload = { beginDownload(it) },
+                    onCancel = {
+                        ModelDownloader.cancel(context)
+                        download = null
+                    },
+                )
+                Spacer(Modifier.height(8.dp))
+            }
+
             models.forEach { model ->
                 ModelRow(
                     model = model,
@@ -276,6 +373,12 @@ fun LocalModelScreen(
                     isStarting = (status as? LocalServerStatus.Starting)?.modelPath == model.path,
                     onStart = { start(model) },
                 )
+            }
+
+            if (models.isNotEmpty()) {
+                TextButton(onClick = { showCatalog = !showCatalog }) {
+                    Text(stringResource(R.string.orion_model_get_another), fontSize = 13.sp)
+                }
             }
 
             // Rejection path: the user may have granted access to a folder we
@@ -540,6 +643,144 @@ private fun ModelRow(
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ModelCatalogCard(
+    recommended: CatalogModel,
+    alternatives: List<CatalogModel>,
+    capacity: DeviceCapacity,
+    download: ModelDownloader.DownloadState?,
+    busy: Boolean,
+    onDownload: (CatalogModel) -> Unit,
+    onCancel: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+        ),
+        shape = RoundedCornerShape(18.dp),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            val active = download?.takeIf { it.status == ModelDownloader.Status.RUNNING }
+            if (active != null) {
+                Text(
+                    text = stringResource(R.string.orion_model_downloading, active.model.displayName),
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp,
+                )
+                Spacer(Modifier.height(10.dp))
+                LinearProgressIndicator(
+                    progress = { active.fraction },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(6.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "${CatalogModel.formatSize(active.bytes)} / " +
+                            CatalogModel.formatSize(active.total),
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = onCancel) {
+                        Text(stringResource(R.string.orion_model_cancel), fontSize = 13.sp)
+                    }
+                }
+            } else {
+                if (download?.status == ModelDownloader.Status.FAILED) {
+                    Text(
+                        text = stringResource(R.string.orion_model_download_failed),
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+                Text(
+                    text = stringResource(R.string.orion_models_empty_title),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = stringResource(R.string.orion_models_empty_body),
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = stringResource(
+                        R.string.orion_model_device,
+                        String.format(java.util.Locale.US, "%.0f GB", capacity.totalRamGb),
+                        String.format(java.util.Locale.US, "%.0f GB", capacity.freeStorageGb),
+                    ),
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    text = stringResource(R.string.orion_model_recommended),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = recommended.displayName,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = recommended.summary(),
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(10.dp))
+                Button(
+                    onClick = { onDownload(recommended) },
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.orion_model_download_start))
+                }
+
+                if (alternatives.isNotEmpty()) {
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        text = stringResource(R.string.orion_model_other_options),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    alternatives.forEach { model ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(model.displayName, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                Text(
+                                    text = model.summary(),
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            TextButton(onClick = { onDownload(model) }, enabled = !busy) {
+                                Text(
+                                    text = stringResource(R.string.orion_model_download_simple),
+                                    fontSize = 13.sp,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun AdvancedCard(
     contextSize: Int,

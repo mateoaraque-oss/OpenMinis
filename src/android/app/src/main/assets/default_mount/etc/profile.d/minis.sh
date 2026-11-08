@@ -1,12 +1,12 @@
 # MinisApp shell configuration
 # Loaded by /etc/profile via the profile.d mechanism (login shells only).
 
-# Prompt parity with iOS — `root@minis:/var/minis#`. iOS bakes the
+# Prompt parity with iOS — `root@orion:/var/minis#`. iOS bakes the
 # literal "minis" into PS1 (deps/prepare_alpine_rootfs.sh) rather than
 # relying on \h, so the prompt is stable regardless of what /etc/hostname
 # happens to contain. We do the same on Android so a fresh install
 # matches without needing a rootfs rebuild.
-export PS1='\u@minis:\w\$ '
+export PS1='\u@orion:\w\$ '
 
 # Enable ash command history with arrow keys
 export HISTFILE="$HOME/.ash_history"

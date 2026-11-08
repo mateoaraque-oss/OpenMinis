@@ -70,7 +70,7 @@ val LightChatPalette = ChatPalette(
     secondaryText = Color(0x993C3C43),
     tertiaryText = Color(0x4D3C3C43),
     disabledText = Color(0x2E3C3C43),
-    userBubble = Color(0x1E787880),
+    userBubble = Color(0x1F5B4BD6),
     toolBg = Color(0xFFF2F2F7),
     toolBorder = Color(0x14000000),
     toolCapsuleBg = Color(0xFFF2F2F7),
@@ -81,18 +81,18 @@ val LightChatPalette = ChatPalette(
     codeBlockText = Color(0xFF34C759),
     inlineCodeBg = Color(0xFFF2F2F7),
     inlineCodeText = Color(0xFFFF9500),
-    link = Color(0xFF007AFF),
+    link = Color(0xFF5B4BD6),
     blockquoteBar = Color(0x80FF9500),
-    thinking = Color(0xFF007AFF),
+    thinking = Color(0xFF5B4BD6),
     warningBg = Color(0x14FF9500),
     warningText = Color(0x73000000),
     tableBorder = Color(0x1F000000),
     inputShadow = Color.Transparent,
-    toastBg = Color(0x2E007AFF),
+    toastBg = Color(0x2E5B4BD6),
     thumbnailBorder = Color(0x33808080),
     sheetHeaderBg = Color(0xFFFFFFFF),
     sheetHeaderBorder = Color(0x1A000000),
-    fabAccent = Color(0xFFB7AF96),
+    fabAccent = Color(0xFF5B4BD6),
 )
 
 // T153: Android-specific dark palette tweaks. iOS borrows the system
@@ -122,7 +122,7 @@ val DarkChatPalette = ChatPalette(
     // wash" failure the palette header warns about. Use an OPAQUE cool slate-blue
     // so the user's own messages read as a distinct accent; white primaryText
     // stays legible on it.
-    userBubble = Color(0xFF2F3A5C),
+    userBubble = Color(0xFF3A2E6B),
     toolBg = Color(0xFF3A3A3F),
     toolBorder = Color(0x40545458),
     toolCapsuleBg = Color(0xFF28282C),
@@ -139,18 +139,18 @@ val DarkChatPalette = ChatPalette(
     // chips read against both the wash and fenced blocks.
     inlineCodeBg = Color(0xFF34343A),
     inlineCodeText = Color(0xFFFF9F0A),
-    link = Color(0xFF0A84FF),
+    link = Color(0xFFB7A9FF),
     blockquoteBar = Color(0x80FF9F0A),
-    thinking = Color(0xFF0A84FF),
+    thinking = Color(0xFFB7A9FF),
     warningBg = Color(0x14FF9F0A),
     warningText = Color(0x73FFFFFF),
     tableBorder = Color(0xFF38383A),
     inputShadow = Color(0x80000000),
-    toastBg = Color(0x2E0A84FF),
+    toastBg = Color(0x2EB7A9FF),
     thumbnailBorder = Color(0x20545458),
     sheetHeaderBg = Color(0xFF2C2C2E),
     sheetHeaderBorder = Color(0x33FFFFFF),
-    fabAccent = Color(0xFF504C42),
+    fabAccent = Color(0xFF4A3BB0),
 )
 
 val LocalChatPalette = compositionLocalOf { LightChatPalette }

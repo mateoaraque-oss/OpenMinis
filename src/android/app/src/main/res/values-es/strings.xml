@@ -1655,6 +1655,19 @@
     <string name="sessionlist_welcome_step3_subtitle">Toca para empezar</string>
     <string name="sessionlist_welcome_step3_locked">Completa primero el paso 2</string>
     <string name="sessionlist_welcome_step_done">Listo</string>
+    <string name="sessionlist_welcome_local_title">Usar un modelo en este teléfono</string>
+    <string name="sessionlist_welcome_local_subtitle">Sin clave de API &#183; funciona sin internet</string>
+    <string name="sessionlist_welcome_local_found">%1$s está listo en este teléfono</string>
+    <string name="sessionlist_welcome_local_none">Orion elige el mejor modelo para tu teléfono y lo descarga</string>
+    <string name="sessionlist_welcome_local_configured">Orion local está configurado</string>
+    <string name="sessionlist_welcome_local_action">Configurar</string>
+    <string name="sessionlist_welcome_local_manage">Administrar</string>
+    <string name="sessionlist_welcome_cloud_title">Usar un modelo en la nube</string>
+    <string name="sessionlist_welcome_cloud_subtitle">Agrega una clave de API de Anthropic, OpenAI, Gemini u OpenRouter</string>
+    <string name="sessionlist_welcome_cloud_done">Proveedor en la nube configurado</string>
+    <string name="sessionlist_welcome_or">o</string>
+    <string name="sessionlist_welcome_models_title">Elige tus modelos</string>
+    <string name="sessionlist_welcome_models_subtitle">Selecciona con cuáles puede chatear Orion</string>
     <string name="webapp_activity_label">Orion WebApp</string>
     <string name="webapp_source_missing">El archivo de origen ya no existe.</string>
     <string name="webapp_external_nav_blocked">Navegación externa bloqueada.</string>
@@ -2032,4 +2045,24 @@
     <string name="orion_local_autostart_loading">Cargando tu modelo en este teléfono&#8230;</string>
     <string name="orion_local_log">Ver registro del motor</string>
     <string name="orion_local_size_hint">Los modelos de 1 a 3B en Q4 van mejor con 8 GB de RAM.</string>
+
+    <!-- [T-orion-model-catalog] Descarga del modelo recomendado. -->
+    <string name="orion_models_empty_title">Aún no hay ningún modelo en este teléfono</string>
+    <string name="orion_models_empty_body">Orion puede descargar uno por ti. Funciona sin internet, en el teléfono; no se sube nada.</string>
+    <string name="orion_model_recommended">RECOMENDADO PARA TU TELÉFONO</string>
+    <string name="orion_model_device">Tu teléfono: %1$s de RAM &#183; %2$s libres</string>
+    <string name="orion_model_download_start">Descargar y arrancar</string>
+    <string name="orion_model_download_simple">Descargar</string>
+    <string name="orion_model_downloading">Descargando %1$s</string>
+    <string name="orion_model_cancel">Cancelar</string>
+    <string name="orion_model_downloaded">Modelo descargado. Cargándolo en este teléfono&#8230;</string>
+    <string name="orion_model_download_failed">La descarga falló. Revisa tu conexión e inténtalo de nuevo.</string>
+    <string name="orion_model_tier_light">Rápido</string>
+    <string name="orion_model_tier_balanced">Equilibrado</string>
+    <string name="orion_model_tier_quality">Mejor calidad</string>
+    <string name="orion_model_other_options">OTRAS OPCIONES</string>
+    <string name="orion_model_needs_space">necesita %1$s libres</string>
+    <string name="orion_model_download_title">Orion &#183; descargando %1$s</string>
+    <string name="orion_model_download_body">Puedes seguir usando la app; la descarga continúa en segundo plano.</string>
+    <string name="orion_model_get_another">Descargar otro modelo</string>
 </resources>

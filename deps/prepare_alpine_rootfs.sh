@@ -219,7 +219,7 @@ configure_rootfs() {
     cat >> "$ROOTFS_DATA/etc/profile" << 'EOF'
 
 # MinisApp iSH Configuration
-export PS1='\u@minis:\w\$ '
+export PS1='\u@orion:\w\$ '
 export TERM=xterm-256color
 export HOME=/root
 export LANG=C.UTF-8

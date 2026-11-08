@@ -1969,6 +1969,19 @@
     <string name="sessionlist_welcome_step3_locked">Complete step 2 first</string>
     <string name="sessionlist_welcome_restore_backup">Have a backup? Restore from it</string>
     <string name="sessionlist_welcome_step_done">Done</string>
+    <string name="sessionlist_welcome_local_title">Use a model on this phone</string>
+    <string name="sessionlist_welcome_local_subtitle">No API key &#183; works offline</string>
+    <string name="sessionlist_welcome_local_found">%1$s is ready on this phone</string>
+    <string name="sessionlist_welcome_local_none">Orion picks the best model for your phone and downloads it</string>
+    <string name="sessionlist_welcome_local_configured">Orion local is configured</string>
+    <string name="sessionlist_welcome_local_action">Set up</string>
+    <string name="sessionlist_welcome_local_manage">Manage</string>
+    <string name="sessionlist_welcome_cloud_title">Use a cloud model</string>
+    <string name="sessionlist_welcome_cloud_subtitle">Add an API key from Anthropic, OpenAI, Gemini or OpenRouter</string>
+    <string name="sessionlist_welcome_cloud_done">Cloud provider configured</string>
+    <string name="sessionlist_welcome_or">or</string>
+    <string name="sessionlist_welcome_models_title">Choose your models</string>
+    <string name="sessionlist_welcome_models_subtitle">Pick what Orion can use in a chat</string>
 
     <!-- T-pwa-1: WebApp shortcut foundation (renamed from PWA) -->
     <string name="webapp_activity_label">Orion WebApp</string>
@@ -2762,4 +2775,24 @@
     <string name="orion_local_autostart_loading">Loading your model on this phone&#8230;</string>
     <string name="orion_local_log">Show engine log</string>
     <string name="orion_local_size_hint">1&#8211;3B Q4 models run best on 8 GB of RAM.</string>
+
+    <!-- [T-orion-model-catalog] Recommended model download. -->
+    <string name="orion_models_empty_title">No model on this phone yet</string>
+    <string name="orion_models_empty_body">Orion can download one for you. It runs offline, on the phone; nothing is uploaded.</string>
+    <string name="orion_model_recommended">RECOMMENDED FOR THIS PHONE</string>
+    <string name="orion_model_device">Your phone: %1$s of RAM &#183; %2$s free</string>
+    <string name="orion_model_download_start">Download and start</string>
+    <string name="orion_model_download_simple">Download</string>
+    <string name="orion_model_downloading">Downloading %1$s</string>
+    <string name="orion_model_cancel">Cancel</string>
+    <string name="orion_model_downloaded">Model downloaded. Loading it on this phone&#8230;</string>
+    <string name="orion_model_download_failed">The download failed. Check your connection and try again.</string>
+    <string name="orion_model_tier_light">Fast</string>
+    <string name="orion_model_tier_balanced">Balanced</string>
+    <string name="orion_model_tier_quality">Best quality</string>
+    <string name="orion_model_other_options">OTHER OPTIONS</string>
+    <string name="orion_model_needs_space">needs %1$s free</string>
+    <string name="orion_model_download_title">Orion &#183; downloading %1$s</string>
+    <string name="orion_model_download_body">You can keep using the app; the download continues in the background.</string>
+    <string name="orion_model_get_another">Download another model</string>
 </resources>

@@ -2,6 +2,7 @@ package com.openminis.app.localmodel
 
 import com.openminis.app.data.model.LLMModel
 import com.openminis.app.data.model.ModelEntry
+import com.openminis.app.data.model.ModelGroup
 import com.openminis.app.data.model.ProviderCredential
 import com.openminis.app.data.model.ProviderInstance
 import com.openminis.app.data.model.ProviderType
@@ -101,6 +102,20 @@ object LocalModelProvider {
         // New chats fall back to the last-used entry; setting it here is what
         // makes the next message go to the phone instead of the cloud.
         if (entry != null) repo.lastUsedEntryId = entry.id
+
+        // [T-orion-onboarding-local] First-run friendliness: with no model
+        // group yet, put this entry in one. The landing's "Start a
+        // conversation" unlocks on `hasGroups`, and without this the user
+        // would be sent through the model picker after the model already
+        // downloaded and started by itself.
+        if (entry != null && repo.config.value.modelGroups.isEmpty()) {
+            val group = ModelGroup(name = LABEL)
+            group.memberEntryIds.add(entry.id)
+            repo.addGroup(group)
+            if (repo.config.value.defaultPrimaryGroupId == null) {
+                repo.defaultPrimaryGroupId = group.id
+            }
+        }
         return entry
     }
 }

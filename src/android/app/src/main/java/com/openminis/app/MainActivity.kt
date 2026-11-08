@@ -518,6 +518,12 @@ class MainActivity : ComponentActivity() {
         if (isAssistInvocation) {
             // [T-orion-autostart] Bring the phone's own model back with no tap.
             com.openminis.app.localmodel.LocalModelBoot.onAssistInvocation(this)
+        } else {
+            // [T-orion-autostart] Normal launch: when the selected model is
+            // the one on this phone, the loopback engine must be alive before
+            // the first message; otherwise the chat looks broken until the
+            // user visits Settings.
+            com.openminis.app.localmodel.LocalModelBoot.onAppLaunch(this)
         }
         val explicitDeepLink = if (isAssistInvocation) {
             DeepLinkAction.NewVoiceChat
@@ -759,6 +765,12 @@ class MainActivity : ComponentActivity() {
         // touching the deep-link path so the share coordinator sees it.
         if (intent.getBooleanExtra("shared_content", false)) {
             com.openminis.app.share.ShareCoordinator.processPendingShare(this)
+        }
+        // [T-orion-autostart] Re-opening Orion from the launcher after a long
+        // background spell: the engine may have been reclaimed; the guard in
+        // LocalModelBoot keeps this a no-op while it is already up.
+        if (intent.action == Intent.ACTION_MAIN) {
+            com.openminis.app.localmodel.LocalModelBoot.onAppLaunch(this)
         }
         handleDeepLink(intent.data)
     }

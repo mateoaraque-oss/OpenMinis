@@ -105,6 +105,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Surface
 import com.openminis.app.ui.components.MinisAlertDialog
+import com.openminis.app.ui.components.MinisButton
 import com.openminis.app.ui.components.MinisOutlinedButton
 import com.openminis.app.ui.components.MinisMenu
 import com.openminis.app.ui.components.MinisMenuDivider
@@ -117,6 +118,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Badge
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -182,6 +184,15 @@ import com.openminis.app.data.db.ChatSessionEntity
 import com.openminis.app.data.db.FolderEntity
 import com.openminis.app.ui.theme.ChatColors
 import com.openminis.app.ui.theme.minisFabColor
+import com.openminis.app.ui.components.OrionMood
+import com.openminis.app.ui.components.OrionOrb
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.outlined.Cloud
+import androidx.compose.material.icons.outlined.Memory
+import androidx.compose.ui.graphics.vector.ImageVector
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.openminis.app.data.repository.ChatRepository
 import com.openminis.app.data.repository.ProviderRepository
 import kotlin.math.roundToInt
@@ -601,6 +612,8 @@ fun SessionListScreen(
     onSettingsClick: () -> Unit,
     onAddProviderClick: () -> Unit = {},
     onSelectModelsClick: () -> Unit = {},
+    /** [T-orion-onboarding-local] Opens the local-model screen from the landing. */
+    onLocalModelClick: () -> Unit = {},
     onRestoreBackupClick: () -> Unit = {},
     onTerminalClick: () -> Unit = {},
     onRootfsClick: () -> Unit = {},
@@ -684,6 +697,29 @@ fun SessionListScreen(
     val providerConfig by providerRepository.config.collectAsState()
     val hasProviders = providerConfig.instances.isNotEmpty()
     val hasGroups = providerConfig.modelGroups.isNotEmpty()
+    // [T-orion-onboarding-local] The landing offers a model that runs on the
+    // phone as the first option, so it needs to know whether one is already
+    // set up (provider row) and whether a file is present (cheap scan). Both
+    // are best-effort: a null/false result only changes the subtitle.
+    val hasLocalProvider = remember(providerConfig.instances) {
+        providerConfig.instances.any {
+            it.label.equals(com.openminis.app.localmodel.LocalModelProvider.LABEL, ignoreCase = true)
+        }
+    }
+    val hasCloudProvider = remember(providerConfig.instances) {
+        providerConfig.instances.any {
+            !it.label.equals(com.openminis.app.localmodel.LocalModelProvider.LABEL, ignoreCase = true)
+        }
+    }
+    var detectedLocalModel by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        detectedLocalModel = withContext(Dispatchers.IO) {
+            runCatching {
+                com.openminis.app.localmodel.LocalModelScanner.scan(context)
+                    .firstOrNull()?.displayName
+            }.getOrNull()
+        }
+    }
     // [T-android-startup-config-stall] Provider config now loads off-thread, so
     // for a brief startup window `providerConfig` is the empty placeholder.
     // Gate the onboarding/list render on this too (alongside the sessions
@@ -1163,6 +1199,10 @@ fun SessionListScreen(
                         OnboardingLanding(
                             hasProviders = hasProviders,
                             hasGroups = hasGroups,
+                            hasLocalProvider = hasLocalProvider,
+                            hasCloudProvider = hasCloudProvider,
+                            localModelName = detectedLocalModel,
+                            onLocalModelClick = onLocalModelClick,
                             onAddProvider = onAddProviderClick,
                             onSelectModels = onSelectModelsClick,
                             onRestoreBackup = onRestoreBackupClick,
@@ -3527,12 +3567,16 @@ private fun SessionBadgeOverlay(
     }
 }
 
-// ─── Onboarding Landing (iOS-style 3-step setup) ───────────────────────────
+// ─── Onboarding Landing (Orion first run) ──────────────────────────────
 
 @Composable
 private fun OnboardingLanding(
     hasProviders: Boolean,
     hasGroups: Boolean,
+    hasLocalProvider: Boolean,
+    hasCloudProvider: Boolean,
+    localModelName: String?,
+    onLocalModelClick: () -> Unit,
     onAddProvider: () -> Unit,
     onSelectModels: () -> Unit,
     onStartConversation: () -> Unit,
@@ -3541,27 +3585,25 @@ private fun OnboardingLanding(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            // Bottom padding ≈ top-bar height so the content visually centers
-            // relative to the whole screen, not just the Scaffold inner area.
-            .padding(horizontal = 32.dp)
-            .padding(bottom = 64.dp),
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp)
+            .padding(bottom = 40.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
     ) {
-        Icon(
-            imageVector = Icons.Default.AutoAwesome,
-            contentDescription = null,
-            modifier = Modifier.size(56.dp),
-            tint = MaterialTheme.colorScheme.primary,
+        Spacer(Modifier.height(28.dp))
+        OrionOrb(
+            levels = emptyList(),
+            isActive = false,
+            diameter = 92.dp,
+            mood = OrionMood.STANDBY,
         )
-        Spacer(Modifier.height(16.dp))
-
+        Spacer(Modifier.height(14.dp))
         Text(
-            text = stringResource(R.string.sessionlist_welcome_title),
-            style = MaterialTheme.typography.headlineSmall,
+            text = "Orion",
+            style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
         Text(
             text = stringResource(R.string.sessionlist_welcome_subtitle),
             style = MaterialTheme.typography.bodyMedium,
@@ -3569,60 +3611,80 @@ private fun OnboardingLanding(
             textAlign = TextAlign.Center,
         )
 
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(26.dp))
 
-        Column(
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+        // [T-orion-onboarding-local] Local first: the model already on the
+        // phone is the zero-setup path, and the one Orion can configure by
+        // itself. The cloud card is the explicit alternative, not the gate.
+        SetupChoiceCard(
+            icon = Icons.Outlined.Memory,
+            title = stringResource(R.string.sessionlist_welcome_local_title),
+            subtitle = when {
+                hasLocalProvider ->
+                    stringResource(R.string.sessionlist_welcome_local_configured)
+                localModelName != null ->
+                    stringResource(R.string.sessionlist_welcome_local_found, localModelName)
+                else ->
+                    stringResource(R.string.sessionlist_welcome_local_none)
+            },
+            isDone = hasLocalProvider,
+            highlight = !hasLocalProvider,
+            onClick = onLocalModelClick,
+        )
+
+        Spacer(Modifier.height(12.dp))
+        Row(
             modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            SetupStepCard(
-                number = 1,
-                title = stringResource(R.string.sessionlist_welcome_step1_title),
-                subtitle = if (hasProviders) {
-                    stringResource(R.string.sessionlist_welcome_step_done)
-                } else {
-                    stringResource(R.string.sessionlist_welcome_step1_subtitle)
-                },
-                isDone = hasProviders,
-                isLocked = false,
-                onClick = { if (!hasProviders) onAddProvider() },
+            HorizontalDivider(modifier = Modifier.weight(1f))
+            Text(
+                text = stringResource(R.string.sessionlist_welcome_or),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            HorizontalDivider(modifier = Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(12.dp))
 
-            SetupStepCard(
-                number = 2,
-                title = stringResource(R.string.sessionlist_welcome_step2_title),
-                subtitle = when {
-                    hasGroups -> stringResource(R.string.sessionlist_welcome_step_done)
-                    hasProviders -> stringResource(R.string.sessionlist_welcome_step2_subtitle)
-                    else -> stringResource(R.string.sessionlist_welcome_step2_locked)
-                },
-                isDone = hasGroups,
-                isLocked = !hasProviders,
-                onClick = { if (hasProviders && !hasGroups) onSelectModels() },
-            )
+        SetupChoiceCard(
+            icon = Icons.Outlined.Cloud,
+            title = stringResource(R.string.sessionlist_welcome_cloud_title),
+            subtitle = if (hasCloudProvider) {
+                stringResource(R.string.sessionlist_welcome_cloud_done)
+            } else {
+                stringResource(R.string.sessionlist_welcome_cloud_subtitle)
+            },
+            isDone = hasCloudProvider,
+            highlight = false,
+            onClick = onAddProvider,
+        )
 
-            SetupStepCard(
-                number = 3,
-                title = stringResource(R.string.sessionlist_welcome_step3_title),
-                subtitle = if (hasGroups) {
-                    stringResource(R.string.sessionlist_welcome_step3_subtitle)
-                } else {
-                    stringResource(R.string.sessionlist_welcome_step3_locked)
-                },
+        if (hasProviders && !hasGroups) {
+            Spacer(Modifier.height(20.dp))
+            SetupChoiceCard(
+                icon = Icons.Outlined.ChecklistRtl,
+                title = stringResource(R.string.sessionlist_welcome_models_title),
+                subtitle = stringResource(R.string.sessionlist_welcome_models_subtitle),
                 isDone = false,
-                isLocked = !hasGroups,
-                onClick = { if (hasGroups) onStartConversation() },
+                highlight = false,
+                onClick = onSelectModels,
             )
         }
 
-        // [T-onboarding-restore-link] A side route for someone moving from
-        // another device (iOS parity: ContentView.emptyState). A footnote link,
-        // not a fourth card, so it does not compete with the three steps.
-        // Shown only until models are selected — after that this landing also
-        // greets returning users with no chats, whose path is Settings →
-        // Backup & Restore. Restore merges, so it is safe after step 1 too.
+        if (hasGroups) {
+            Spacer(Modifier.height(28.dp))
+            MinisButton(
+                onClick = onStartConversation,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.sessionlist_welcome_step3_title))
+            }
+        }
+
         if (!hasGroups) {
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(16.dp))
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
@@ -3648,79 +3710,74 @@ private fun OnboardingLanding(
 }
 
 @Composable
-private fun SetupStepCard(
-    number: Int,
+private fun SetupChoiceCard(
+    icon: ImageVector,
     title: String,
     subtitle: String,
     isDone: Boolean,
-    isLocked: Boolean,
+    highlight: Boolean,
     onClick: () -> Unit,
 ) {
-    val isEnabled = !isDone && !isLocked
-
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
             .background(
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                shape = RoundedCornerShape(12.dp),
+                when {
+                    isDone -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    highlight -> MaterialTheme.colorScheme.primaryContainer
+                    else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                },
             )
-            .clickable(enabled = isEnabled, onClick = onClick)
-            .padding(14.dp),
+            .clickable(onClick = onClick)
+            .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Box(
             modifier = Modifier
-                .size(32.dp)
+                .size(42.dp)
+                .clip(CircleShape)
                 .background(
-                    color = if (isDone) Color(0xFF34C759) else MaterialTheme.colorScheme.primary,
-                    shape = CircleShape,
+                    if (isDone) Color(0xFF34C759) else MaterialTheme.colorScheme.primary,
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            if (isDone) {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(16.dp),
-                )
-            } else {
-                Text(
-                    text = "$number",
-                    color = Color.White,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(22.dp),
+            )
         }
-
-        Column(
-            modifier = Modifier.weight(1f).height(56.dp),
-            verticalArrangement = Arrangement.Center,
-        ) {
+        Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium,
-                color = if (isDone) MaterialTheme.colorScheme.onSurfaceVariant
-                else MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold,
+                color = if (highlight && !isDone) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
             )
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (highlight && !isDone) {
+                    MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
             )
         }
-
-        if (!isDone && isEnabled) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-            )
-        }
+        Icon(
+            imageVector = if (isDone) Icons.Default.Check
+            else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = if (isDone) Color(0xFF34C759)
+            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+        )
     }
 }
 
