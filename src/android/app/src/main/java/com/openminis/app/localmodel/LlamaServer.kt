@@ -299,7 +299,10 @@ object LlamaServer {
         add("--host"); add("127.0.0.1")
         add("--port"); add(port.toString())
         add("--jinja")
-        if (!config.useMmap) add("--no-mmap")
+        // b12182 replaced `--no-mmap` with `--load-mode`; the old flag makes
+        // the argument parser abort with "invalid argument" before the model
+        // is even opened. "none" is the no-mmap mode, "mmap" is explicit mmap.
+        add("--load-mode"); add(if (config.useMmap) "mmap" else "none")
         // Small batches keep the first token latency low on a phone and cap
         // the compute buffer, which is what actually runs out of memory.
         add("-b"); add("512")
@@ -314,15 +317,21 @@ object LlamaServer {
     ): Process {
         fun launch(cmd: List<String>): Process {
             val pb = ProcessBuilder(cmd)
-            pb.directory(context.filesDir)
+            // The ggml backend loader finds the `libggml-cpu-*.so` variants by
+            // enumerating the directory of /proc/self/exe and the current
+            // directory. Running with cwd = native lib dir means discovery
+            // still works through the linker64 fallback, where /proc/self/exe
+            // points at /system/bin/linker64 instead of our binary.
+            pb.directory(File(nativeDir))
             pb.redirectErrorStream(true)
             pb.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile(context)))
             val env = pb.environment()
             env["LD_LIBRARY_PATH"] = nativeDir
-            // ggml dlopens the CPU/backend variants from the executable's own
-            // directory; stating it explicitly also covers the linker64
-            // fallback, where /proc/self/exe points at the linker instead.
-            env["GGML_BACKEND_PATH"] = nativeDir
+            // Do NOT put the directory in GGML_BACKEND_PATH: in this release
+            // that variable is a single *library file* loaded in addition to
+            // the discovered backends, so a directory yields
+            // "failed to load ...: Is a directory". Directory discovery is
+            // handled by the executable-dir/cwd search above.
             env["HOME"] = context.filesDir.absolutePath
             env["TMPDIR"] = context.cacheDir.absolutePath
             return pb.start()
