@@ -349,9 +349,10 @@ fun LocalModelScreen(
             // [T-orion-model-catalog] No model on the phone? Offer the one
             // Orion recommends for this device instead of sending the user to
             // a browser to guess which GGUF is safe.
-            if (models.isEmpty() || showCatalog) {
+            if ((hasScanned && models.isEmpty()) || showCatalog) {
                 Spacer(Modifier.height(12.dp))
                 ModelCatalogCard(
+                    hasModels = models.isNotEmpty(),
                     recommended = recommended,
                     alternatives = alternatives,
                     capacity = capacity,
@@ -645,6 +646,7 @@ private fun ModelRow(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ModelCatalogCard(
+    hasModels: Boolean,
     recommended: CatalogModel,
     alternatives: List<CatalogModel>,
     capacity: DeviceCapacity,
@@ -696,16 +698,21 @@ private fun ModelCatalogCard(
                     Spacer(Modifier.height(8.dp))
                 }
                 Text(
-                    text = stringResource(R.string.orion_models_empty_title),
+                    text = stringResource(
+                        if (hasModels) R.string.orion_model_get_another
+                        else R.string.orion_models_empty_title,
+                    ),
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp,
                 )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = stringResource(R.string.orion_models_empty_body),
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                if (!hasModels) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(R.string.orion_models_empty_body),
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Spacer(Modifier.height(10.dp))
                 Text(
                     text = stringResource(
