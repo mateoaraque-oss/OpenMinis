@@ -1238,7 +1238,7 @@ fun AppNavigation(
         ) { backStackEntry ->
             val context = androidx.compose.ui.platform.LocalContext.current
             val rootfs = RootfsManager.getInstance(context.applicationContext)
-            val varMinis = java.io.File(rootfs.rootfsDir, "var/minis")
+            val varOrion = java.io.File(rootfs.rootfsDir, "var/minis")
             val sessionId = backStackEntry.arguments?.getString("sessionId") ?: return@composable
             // [T-minis-folder-link] A tapped folder link opens at that folder.
             // The browser is rooted at the rootfs and lists through the PRoot
@@ -1246,11 +1246,11 @@ fun AppNavigation(
             // the folder need not exist inside the rootfs tarball itself.
             val folderPath = backStackEntry.arguments?.getString("path")
                 ?.trim('/')?.takeIf { it.isNotEmpty() }
-            val vm = remember(rootfs.rootfsDir.absolutePath, varMinis.absolutePath, sessionId, folderPath) {
+            val vm = remember(rootfs.rootfsDir.absolutePath, varOrion.absolutePath, sessionId, folderPath) {
                 FileBrowserViewModel(
                     rootPath = rootfs.rootfsDir,
                     initialPath = folderPath?.let { java.io.File(rootfs.rootfsDir, it) }
-                        ?: varMinis.takeIf { it.exists() },
+                        ?: varOrion.takeIf { it.exists() },
                     rootLabel = "/",
                     // T121: route directory listings through PRootKernel bind
                     // mounts so /var/minis/{skills,memory,shared} resolve to

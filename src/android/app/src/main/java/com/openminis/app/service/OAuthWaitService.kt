@@ -144,7 +144,7 @@ class OAuthWaitService : Service() {
     }
 
     /**
-     * Swiping Minis away also closes the Custom Tab, which lives in Minis's
+     * Swiping Orion away also closes the Custom Tab, which lives in Orion's
      * task: no redirect can come any more, so stop instead of holding a
      * notification for a sign-in that is gone.
      */
@@ -181,7 +181,7 @@ class OAuthWaitService : Service() {
 
         /**
          * Called from [OAuthWaitKeepAlive.begin], i.e. from the user's Sign In
-         * tap with Minis in the foreground. Still guarded: on 31+ a start from
+         * tap with Orion in the foreground. Still guarded: on 31+ a start from
          * the background throws ForegroundServiceStartNotAllowedException, and
          * nothing here may break the sign-in.
          */

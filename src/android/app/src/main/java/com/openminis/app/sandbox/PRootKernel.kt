@@ -272,7 +272,7 @@ object PRootKernel {
     }
 
     /**
-     * Register the global (session-independent) Minis bind mounts so direct
+     * Register the global (session-independent) Orion bind mounts so direct
      * file I/O tools (file_read, file_edit) can resolve
      * `/var/minis/{memory,skills,shared}/...` without needing PRoot to be
      * booted or any shell to have started. Safe to call repeatedly.

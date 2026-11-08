@@ -68,8 +68,8 @@ import com.openminis.app.R
 import com.openminis.app.data.repository.ProviderRepository
 import com.openminis.app.speech.RecognitionState
 import com.openminis.app.speech.SpeechRecognitionManager
-import com.openminis.app.ui.components.OrionOrb
-import com.openminis.app.ui.components.OrionMood
+import com.openminis.app.ui.components.MinisOrb
+import com.openminis.app.ui.components.MinisMood
 import com.openminis.app.ui.theme.ChatColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -209,7 +209,7 @@ internal fun InlineVoiceInputPanel(
     // rules. Mirrors iOS `InlineVoiceInputView`.
     contextUsageHint: com.openminis.app.ui.chat.ContextUsageHint? = null,
     /** [T-orion-presence] Mood from the chat screen; null = derive from recording. */
-    orionMood: OrionMood? = null,
+    orionMood: MinisMood? = null,
     /** [T-orion-presence] Answer-chunk counter, so the orb beats while Orion replies. */
     orionPulse: Int = 0,
     /** [T-android-picker-provider-edit] Open a provider's settings from the voice picker; null hides the button. */
@@ -616,7 +616,7 @@ internal fun InlineVoiceInputPanel(
     // button no longer hides in this case (hiding it stranded users inside
     // voice mode), so the panel owns the explanation: say WHY nothing will be
     // transcribed and link to the two things that fix it — the system speech
-    // service, or an ASR provider configured in Minis. The composer's toggle
+    // service, or an ASR provider configured in Orion. The composer's toggle
     // stays visible throughout, so leaving is always one tap away.
     val engineAvailable by SpeechRecognitionManager.isAvailable.collectAsState()
     if (!engineAvailable) {
@@ -883,7 +883,7 @@ private fun ExpandedContent(
     // [T-android-context-usage-hint] Line currently owning the status row.
     contextUsageLine: com.openminis.app.ui.chat.ContextUsageHint? = null,
     /** [T-orion-presence] Mood computed by the screen; null = derive from recording. */
-    orionMood: OrionMood? = null,
+    orionMood: MinisMood? = null,
     /** [T-orion-presence] Answer-chunk counter, so the orb beats while replying. */
     orionPulse: Int = 0,
     asrStalled: Boolean = false,
@@ -980,10 +980,10 @@ private fun ExpandedContent(
         // Orion orb: the assistant's face. Fed by the same rolling audio
         // levels as the waveform, so it breathes with the user's voice while
         // recording and keeps a slow idle pulse otherwise.
-        OrionOrb(
+        MinisOrb(
             levels = levels,
             isActive = isRecording,
-            mood = orionMood ?: if (isRecording) OrionMood.LISTENING else OrionMood.STANDBY,
+            mood = orionMood ?: if (isRecording) MinisMood.LISTENING else MinisMood.STANDBY,
             pulse = orionPulse,
             diameter = 104.dp,
         )
@@ -1501,7 +1501,7 @@ private fun statusLabel(
  *
  *  - the device's speech service (Google app / OEM equivalent) is missing or
  *    disabled → open system voice-input settings;
- *  - no ASR provider is configured in Minis → open Provider settings.
+ *  - no ASR provider is configured in Orion → open Provider settings.
  *
  * Leaving is always available: the toggle in the composer is untouched.
  */

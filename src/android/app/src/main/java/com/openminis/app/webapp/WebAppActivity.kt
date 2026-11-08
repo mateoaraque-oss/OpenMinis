@@ -205,7 +205,7 @@ class WebAppActivity : ComponentActivity() {
 
     /**
      * T-pwa-3: replaces the prior toast-and-finish with an inline error
-     * screen offering an "Open in Minis" escape hatch.
+     * screen offering an "Open in Orion" escape hatch.
      */
     @OptIn(ExperimentalMaterial3Api::class)
     private fun renderSourceMissing(sourceSessionId: String?) {
@@ -242,7 +242,7 @@ class WebAppActivity : ComponentActivity() {
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                                MinisButton(onClick = { openInMinis(sourceSessionId) }) {
+                                MinisButton(onClick = { openInOrion(sourceSessionId) }) {
                                     Text(stringResource(R.string.webapp_open_in_minis))
                                 }
                             }
@@ -253,7 +253,7 @@ class WebAppActivity : ComponentActivity() {
         }
     }
 
-    private fun openInMinis(sourceSessionId: String?) {
+    private fun openInOrion(sourceSessionId: String?) {
         val intent = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             sourceSessionId?.let { putExtra(EXTRA_TARGET_SESSION_ID, it) }

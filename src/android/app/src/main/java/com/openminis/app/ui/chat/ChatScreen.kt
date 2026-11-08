@@ -148,8 +148,8 @@ import com.openminis.app.R
 import com.openminis.app.data.FileMentionIndex
 import com.openminis.app.logging.AppLogger
 import com.openminis.app.ui.components.MinisAlertDialog
-import com.openminis.app.ui.components.OrionMood
-import com.openminis.app.ui.components.OrionPresenceStrip
+import com.openminis.app.ui.components.MinisMood
+import com.openminis.app.ui.components.MinisPresenceStrip
 import com.openminis.app.ui.components.MinisMenu
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.History
@@ -633,10 +633,10 @@ fun ChatScreen(
     val orionSttState by com.openminis.app.speech.SpeechRecognitionManager.state.collectAsState()
     val orionLevels by com.openminis.app.speech.SpeechRecognitionManager.audioLevels.collectAsState()
     val orionVoiceMode = com.openminis.app.ui.chat.voice.VoiceModePrefs.isVoiceActive
-    val lastOrionMessage = messages.lastOrNull()
+    val lastMinisMessage = messages.lastOrNull()
     val orionAnswering = isStreaming &&
-        lastOrionMessage?.role == "assistant" &&
-        lastOrionMessage.content.isNotEmpty()
+        lastMinisMessage?.role == "assistant" &&
+        lastMinisMessage.content.isNotEmpty()
     // [T-orion-presence] Read-aloud has no chunk stream to hook, so give the
     // orb a slow metronome while TTS is actually emitting audio. Without it
     // the sphere would go flat the moment the text stopped streaming, which
@@ -652,14 +652,14 @@ fun ChatScreen(
     val orionMood = when {
         orionSttState == com.openminis.app.speech.RecognitionState.RECORDING ||
             orionSttState == com.openminis.app.speech.RecognitionState.STARTING ->
-            OrionMood.LISTENING
-        orionAnswering || orionTtsSpeaking -> OrionMood.SPEAKING
-        isStreaming -> OrionMood.THINKING
-        else -> OrionMood.STANDBY
+            MinisMood.LISTENING
+        orionAnswering || orionTtsSpeaking -> MinisMood.SPEAKING
+        isStreaming -> MinisMood.THINKING
+        else -> MinisMood.STANDBY
     }
     // Each chunk changes the answer length; that integer is the orb's pulse
     // counter, so the sphere beats once per arriving piece of the reply.
-    val orionBeat = if (orionAnswering) (lastOrionMessage?.content?.length ?: 0) else orionTtsTick
+    val orionBeat = if (orionAnswering) (lastMinisMessage?.content?.length ?: 0) else orionTtsTick
     // [T-android-jankdiag] Tag frame summaries with "a reply is streaming".
     LaunchedEffect(isStreaming) { com.openminis.app.diagnostics.JankDiag.setStreaming(isStreaming) }
     // [T-android-jankdiag] A chat opens inside the sessions route on a phone: name it.
@@ -1197,7 +1197,7 @@ fun ChatScreen(
         // [T-android-overlay-hide-camera] Suppress the floating bg-overlay
         // BEFORE handing off to the system camera. The camera Activity
         // takes foreground, which by #451's rule would otherwise satisfy
-        // "Minis backgrounded → show overlay" and the capsule would draw
+        // "Orion backgrounded → show overlay" and the capsule would draw
         // on top of the viewfinder. Cleared in the ActivityResult callback.
         com.openminis.app.service.SessionActivityTracker.setCameraSuppressActive(true)
         runCatching { cameraLauncher.launch(intent) }
@@ -2147,7 +2147,7 @@ fun ChatScreen(
     // [T-android-tool-autoscroll] Start-of-turn edge from ViewModel: resume() /
     // retryLast() / retryFromMessage() / rerunFromToolBlock() emit Unit on
     // forceScrollToBottom because they don't append a new user-message row, so
-    // LE(messages.size) below skips them. Without this collector the "Minis is
+    // LE(messages.size) below skips them. Without this collector the "Orion is
     // thinking…" placeholder stays parked behind the input bar until the first
     // streamed token finally bumps the auto-follow tuple.
     LaunchedEffect(listState, viewModel) {
@@ -3016,7 +3016,7 @@ fun ChatScreen(
         topBar = { Column {
             TopAppBar(
                 title = {
-                    // iOS-style centered layout: "Minis" + group row + provider·model row
+                    // iOS-style centered layout: "Orion" + group row + provider·model row
                     Box(
                         modifier = Modifier.fillMaxWidth(),
                         contentAlignment = Alignment.Center,
@@ -3079,7 +3079,7 @@ fun ChatScreen(
                             // exists and the toggle is on, else fall back to
                             // the Soul name (matches the input placeholder
                             // "Message <SoulName>"), then to app_name
-                            // ("Minis") as the terminal fallback.
+                            // ("Orion") as the terminal fallback.
                             // Tap opens the same SessionEditSheet used from
                             // the session list — drafts return null from
                             // loadSessionEntity so the sheet stays closed.
@@ -3802,8 +3802,8 @@ fun ChatScreen(
             // for every turn, typed or spoken. In voice mode the panel's big
             // orb already covers listening, so this one only speaks up for
             // the phases that happen outside it.
-            OrionPresenceStrip(
-                listening = orionMood == OrionMood.LISTENING && !orionVoiceMode,
+            MinisPresenceStrip(
+                listening = orionMood == MinisMood.LISTENING && !orionVoiceMode,
                 streaming = isStreaming,
                 answering = orionAnswering || orionTtsSpeaking,
                 levels = orionLevels,
@@ -3908,7 +3908,7 @@ fun ChatScreen(
                 // in-flight tool is invisible to this predicate → reserve
                 // collapsed to 20dp while a 65dp+6dp floating bar covered
                 // the bottom of the LazyColumn. The new arrivals (status
-                // pill, "Minis is thinking" indicator, inline retry banner) landed
+                // pill, "Orion is thinking" indicator, inline retry banner) landed
                 // behind the bar with no way to scroll them into view.
                 //
                 // Fix: also subscribe to streamingById so the predicate
@@ -4802,7 +4802,7 @@ fun ChatScreen(
                                 viewModel.resume()
                                 // T282: same dual-scroll trick as the regular
                                 // send paths (T281). Resume kicks off a fresh
-                                // stream, so the "Minis is thinking" indicator
+                                // stream, so the "Orion is thinking" indicator
                                 // mounts a frame or two later — pin once now,
                                 // then again after 100ms so the indicator
                                 // doesn't land below the fold.
@@ -6800,7 +6800,7 @@ fun ChatScreen(
                             }
                         }
                     } else
-                    // Text field (iOS: placeholder "Message Minis", no border)
+                    // Text field (iOS: placeholder "Message Orion", no border)
                     run {
                         val interactionSource = remember { MutableInteractionSource() }
                         // [T-android-composer-placeholder-rotation] Which entry
@@ -7120,7 +7120,7 @@ fun ChatScreen(
                                         // [T-android-context-usage-hint] The
                                         // usage line gets the first focus.
                                         // After a reply the keyboard may
-                                        // auto-raise (a Minis setting), and
+                                        // auto-raise (a Orion setting), and
                                         // that focus must not swap away a
                                         // figure the user has not read yet;
                                         // the user's own first tap is

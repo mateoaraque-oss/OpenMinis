@@ -208,7 +208,7 @@ object ResourceWatermark {
      * The name column of one maps line (`[anon]` when it has none), the same
      * digit folding as thread names so numbered stacks and ashmem regions
      * group. A mapping's path is app or system code, never user data - the
-     * only user files Minis maps are under its own data dir, and those paths
+     * only user files Orion maps are under its own data dir, and those paths
      * are folded to the directory below.
      */
     internal fun mapName(line: String): String {
@@ -312,7 +312,7 @@ object ResourceWatermark {
 }
 
 /**
- * [GH #453] Names for threads Minis creates, so a per-name count shows which
+ * [GH #453] Names for threads Orion creates, so a per-name count shows which
  * component a pile of threads belongs to. Each name is dot-free and at most
  * 15 characters before any per-thread number, because the kernel's comm (what
  * `/proc`, tombstones and [ResourceWatermark.threadNames] see) keeps only 15

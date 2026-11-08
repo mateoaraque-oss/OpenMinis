@@ -766,13 +766,13 @@ internal object UserAskResolvedText {
         if (questions.size == 1) questions[0].question
         else questions.joinToString(" · ") { q -> q.header?.takeIf { it.isNotEmpty() } ?: q.question }
 
-    /** The answer digest: chosen labels or typed text, "Left to Minis" when delegated (several only), a cancel reason. */
-    fun digest(results: List<UserAskResolver.Parsed>, dismissed: Boolean, leftToMinis: String): String {
+    /** The answer digest: chosen labels or typed text, "Left to Orion" when delegated (several only), a cancel reason. */
+    fun digest(results: List<UserAskResolver.Parsed>, dismissed: Boolean, leftToOrion: String): String {
         if (dismissed) return ""
         return results.mapNotNull { r ->
             when (r.status) {
                 UserAskResultStatus.ANSWERED, UserAskResultStatus.OTHER -> r.answer.joinToString(", ").takeIf { it.isNotEmpty() }
-                UserAskResultStatus.DELEGATED -> if (results.size > 1) leftToMinis else null
+                UserAskResultStatus.DELEGATED -> if (results.size > 1) leftToOrion else null
                 UserAskResultStatus.DENIED -> r.note?.trim()?.takeIf { it.isNotEmpty() }
                 else -> null
             }

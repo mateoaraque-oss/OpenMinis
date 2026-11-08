@@ -256,7 +256,7 @@ object DebugMethodRegistry {
                 ParamSpec("sessions", "integer", required = false, description = "Agent loop sessions, global, 1..32 (default 6). Raising it admits queued turns. Sub agents do not use these slots."),
                 ParamSpec("childJobs", "integer", required = false, description = "Sub agent jobs PER PARENT conversation, 1..32 (default 3). Raising it drains the queues."),
                 ParamSpec("childJobsPerParent", "integer", required = false, description = "Alias of childJobs (wins when both are given)."),
-                ParamSpec("shellProcessBudget", "integer", required = false, description = "Live Minis child processes the shell gate admits up to, 4..64 (default 16)."),
+                ParamSpec("shellProcessBudget", "integer", required = false, description = "Live Orion child processes the shell gate admits up to, 4..64 (default 16)."),
             ),
             returns = "the caps in effect (as debug.limits.get)",
             example = ex("sessions" to 10, "childJobs" to 10, "shellProcessBudget" to 32),

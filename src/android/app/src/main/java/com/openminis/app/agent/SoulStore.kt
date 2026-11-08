@@ -75,7 +75,7 @@ data class SoulMetadata(
         const val DISPLAY_EMOJI = "✨"
 
         val DEFAULT = SoulMetadata(
-            name = "Minis",
+            name = "Orion",
             // Default emoji is intentionally empty — UI uses the fixed
             // [displayEmoji] sparkle and [SoulMDParser.serialize] no longer
             // writes the `emoji:` line. The field is kept on the struct only
@@ -211,6 +211,8 @@ object SoulStore {
 
     private const val TAG = "SoulStore"
     private const val FILE_NAME = "SOUL.md"
+    /** [T-orion-rebrand] The name upstream/first-run builds wrote. */
+    private const val LEGACY_DEFAULT_NAME = "Minis"
     private const val MEMORY_SUBDIR = "minis-global/memory"
 
     fun fileLocation(context: Context): File =
@@ -343,7 +345,7 @@ object SoulStore {
      * `SoulStore.defaultContent` byte-for-byte (74c0daf).
      */
     val DEFAULT_CONTENT: String = """---
-name: "Minis"
+name: "Orion"
 style: ""
 lang: "auto"
 ---
@@ -361,13 +363,37 @@ lang: "auto"
      */
     fun ensureExists(context: Context) {
         val file = fileLocation(context)
-        if (file.exists()) return
-        try {
-            file.parentFile?.mkdirs()
-            file.writeText(DEFAULT_CONTENT)
-            AppLogger.info(TAG, "seeded SOUL.md at ${file.absolutePath}")
-        } catch (t: Throwable) {
-            AppLogger.warning(TAG, "ensureExists failed: ${t.message}")
+        if (!file.exists()) {
+            try {
+                file.parentFile?.mkdirs()
+                file.writeText(DEFAULT_CONTENT)
+                AppLogger.info(TAG, "seeded SOUL.md at ${file.absolutePath}")
+            } catch (t: Throwable) {
+                AppLogger.warning(TAG, "ensureExists failed: ${t.message}")
+            }
+            return
+        }
+        migrateLegacyDefaultName(context, file)
+    }
+
+    /**
+     * [T-orion-rebrand] The upstream app and the first Orion builds seeded
+     * SOUL.md with old default name below. That name is what the assistant
+     * calls itself in every reply and in the composer placeholder, so an
+     * update would keep using it. Rewrite only that exact legacy default — a
+     * name the user chose is left untouched.
+     */
+    private fun migrateLegacyDefaultName(context: Context, file: File) {
+        val parsed = runCatching { SoulMDParser.parse(file.readText()) }.getOrNull() ?: return
+        if (!parsed.metadata.name.equals(LEGACY_DEFAULT_NAME, ignoreCase = true)) return
+        runCatching {
+            save(
+                context,
+                parsed.copy(metadata = parsed.metadata.copy(name = SoulMetadata.DEFAULT.name)),
+            )
+            AppLogger.info(TAG, "migrated SOUL.md identity to ${SoulMetadata.DEFAULT.name}")
+        }.onFailure {
+            AppLogger.warning(TAG, "SOUL.md name migration failed: ${it.message}")
         }
     }
 
@@ -569,7 +595,7 @@ object SystemPromptBuilder {
         val file = SoulStore.load(context)
         val name = (file?.metadata?.name ?: SoulMetadata.DEFAULT.name)
             .trim()
-            .ifEmpty { "Minis" }
+            .ifEmpty { "Orion" }
 
         val style = (file?.metadata?.style ?: "").trim()
 
