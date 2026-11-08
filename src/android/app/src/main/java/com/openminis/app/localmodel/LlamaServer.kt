@@ -61,6 +61,12 @@ data class LocalModelConfig(
     val useMmap: Boolean = false,
 )
 
+/** [T-orion-autostart] What Orion should reload without the user asking. */
+data class LocalModelLaunch(
+    val model: LocalModelFile,
+    val config: LocalModelConfig,
+)
+
 /**
  * [T-orion-local-model] Runs `llama-server` from the binaries bundled in the
  * APK and exposes it as an OpenAI-compatible endpoint on loopback.
@@ -88,6 +94,13 @@ object LlamaServer {
     private const val HEALTH_TIMEOUT_MS = 240_000L
     private const val POLL_INTERVAL_MS = 700L
     private const val LOG_FILE = "llama-server.log"
+    /** [T-orion-autostart] Shared with the local-model screen's tunables. */
+    private const val PREFS = "orion_local_model"
+    private const val KEY_LAST_PATH = "last_path"
+    private const val KEY_CTX = "ctx"
+    private const val KEY_THREADS = "threads"
+    private const val KEY_MMAP = "mmap"
+    private const val KEY_AUTO_START = "auto_start"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _status = MutableStateFlow<LocalServerStatus>(LocalServerStatus.Stopped)
@@ -107,6 +120,56 @@ object LlamaServer {
     fun modelId(): String? = (_status.value as? LocalServerStatus.Running)?.modelId
 
     /**
+     * [T-orion-autostart] Remember the last model a user actually launched so
+     * Orion can bring it back by itself the next time it is invoked as the
+     * system assistant (after a reboot, a force-stop, or simply a long idle
+     * where Android reclaimed the process).
+     */
+    fun rememberLaunch(context: Context, model: LocalModelFile, config: LocalModelConfig) {
+        runCatching {
+            context.applicationContext
+                .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putString(KEY_LAST_PATH, model.path)
+                .putInt(KEY_CTX, config.contextSize)
+                .putInt(KEY_THREADS, config.threads)
+                .putBoolean(KEY_MMAP, config.useMmap)
+                .apply()
+        }
+    }
+
+    /** The remembered model + tunables, or null when the file is gone. */
+    fun lastLaunch(context: Context): LocalModelLaunch? {
+        val prefs = context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val path = prefs.getString(KEY_LAST_PATH, null) ?: return null
+        val model = LocalModelScanner.fromPath(path) ?: return null
+        return LocalModelLaunch(
+            model = model,
+            config = LocalModelConfig(
+                contextSize = prefs.getInt(KEY_CTX, 4096),
+                threads = prefs.getInt(KEY_THREADS, 4),
+                useMmap = prefs.getBoolean(KEY_MMAP, false),
+            ),
+        )
+    }
+
+    fun autoStartEnabled(context: Context): Boolean =
+        context.applicationContext
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_AUTO_START, true)
+
+    fun setAutoStart(context: Context, enabled: Boolean) {
+        runCatching {
+            context.applicationContext
+                .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_AUTO_START, enabled)
+                .apply()
+        }
+    }
+
+    /**
      * Start the engine for [model]. Idempotent while a start is in flight, and
      * returns immediately: progress is reported through [status].
      */
@@ -120,6 +183,7 @@ object LlamaServer {
         stopQuietly()
 
         val app = context.applicationContext
+        rememberLaunch(app, model, config)
         resetLog(app)
 
         // Pick the port and publish Starting BEFORE the service observes the

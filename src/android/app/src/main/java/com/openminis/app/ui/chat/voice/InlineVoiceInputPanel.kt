@@ -68,8 +68,8 @@ import com.openminis.app.R
 import com.openminis.app.data.repository.ProviderRepository
 import com.openminis.app.speech.RecognitionState
 import com.openminis.app.speech.SpeechRecognitionManager
-import com.openminis.app.ui.components.MinisOrb
-import com.openminis.app.ui.components.MinisMood
+import com.openminis.app.ui.components.OrionOrb
+import com.openminis.app.ui.components.OrionMood
 import com.openminis.app.ui.theme.ChatColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -209,7 +209,7 @@ internal fun InlineVoiceInputPanel(
     // rules. Mirrors iOS `InlineVoiceInputView`.
     contextUsageHint: com.openminis.app.ui.chat.ContextUsageHint? = null,
     /** [T-orion-presence] Mood from the chat screen; null = derive from recording. */
-    orionMood: MinisMood? = null,
+    orionMood: OrionMood? = null,
     /** [T-orion-presence] Answer-chunk counter, so the orb beats while Orion replies. */
     orionPulse: Int = 0,
     /** [T-android-picker-provider-edit] Open a provider's settings from the voice picker; null hides the button. */
@@ -883,7 +883,7 @@ private fun ExpandedContent(
     // [T-android-context-usage-hint] Line currently owning the status row.
     contextUsageLine: com.openminis.app.ui.chat.ContextUsageHint? = null,
     /** [T-orion-presence] Mood computed by the screen; null = derive from recording. */
-    orionMood: MinisMood? = null,
+    orionMood: OrionMood? = null,
     /** [T-orion-presence] Answer-chunk counter, so the orb beats while replying. */
     orionPulse: Int = 0,
     asrStalled: Boolean = false,
@@ -980,10 +980,10 @@ private fun ExpandedContent(
         // Orion orb: the assistant's face. Fed by the same rolling audio
         // levels as the waveform, so it breathes with the user's voice while
         // recording and keeps a slow idle pulse otherwise.
-        MinisOrb(
+        OrionOrb(
             levels = levels,
             isActive = isRecording,
-            mood = orionMood ?: if (isRecording) MinisMood.LISTENING else MinisMood.STANDBY,
+            mood = orionMood ?: if (isRecording) OrionMood.LISTENING else OrionMood.STANDBY,
             pulse = orionPulse,
             diameter = 104.dp,
         )

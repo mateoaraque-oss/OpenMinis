@@ -105,6 +105,7 @@ fun LocalModelScreen(
     var contextSize by remember { mutableIntStateOf(prefs.getInt("ctx", 4096)) }
     var threads by remember { mutableIntStateOf(prefs.getInt("threads", 4)) }
     var useMmap by remember { mutableStateOf(prefs.getBoolean("mmap", false)) }
+    var autoStart by remember { mutableStateOf(prefs.getBoolean("auto_start", true)) }
 
     var models by remember { mutableStateOf<List<LocalModelFile>>(emptyList()) }
     var scanning by remember { mutableStateOf(false) }
@@ -316,10 +317,15 @@ fun LocalModelScreen(
                 contextSize = contextSize,
                 threads = threads,
                 useMmap = useMmap,
+                autoStart = autoStart,
                 enabled = !LlamaServer.isBusy,
                 onContextChange = { contextSize = it },
                 onThreadsChange = { threads = it },
                 onMmapChange = { useMmap = it },
+                onAutoStartChange = {
+                    autoStart = it
+                    LlamaServer.setAutoStart(context, it)
+                },
             )
 
             Text(
@@ -539,10 +545,12 @@ private fun AdvancedCard(
     contextSize: Int,
     threads: Int,
     useMmap: Boolean,
+    autoStart: Boolean,
     enabled: Boolean,
     onContextChange: (Int) -> Unit,
     onThreadsChange: (Int) -> Unit,
     onMmapChange: (Boolean) -> Unit,
+    onAutoStartChange: (Boolean) -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -597,6 +605,27 @@ private fun AdvancedCard(
                     checked = useMmap,
                     onCheckedChange = { if (enabled) onMmapChange(it) },
                     enabled = enabled,
+                )
+            }
+            HorizontalDivider()
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.orion_local_autostart_title),
+                        fontSize = 12.sp,
+                    )
+                    Text(
+                        text = stringResource(R.string.orion_local_autostart_subtitle),
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = autoStart,
+                    onCheckedChange = onAutoStartChange,
                 )
             }
         }

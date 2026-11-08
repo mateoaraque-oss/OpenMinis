@@ -148,8 +148,8 @@ import com.openminis.app.R
 import com.openminis.app.data.FileMentionIndex
 import com.openminis.app.logging.AppLogger
 import com.openminis.app.ui.components.MinisAlertDialog
-import com.openminis.app.ui.components.MinisMood
-import com.openminis.app.ui.components.MinisPresenceStrip
+import com.openminis.app.ui.components.OrionMood
+import com.openminis.app.ui.components.OrionPresenceStrip
 import com.openminis.app.ui.components.MinisMenu
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.History
@@ -652,10 +652,10 @@ fun ChatScreen(
     val orionMood = when {
         orionSttState == com.openminis.app.speech.RecognitionState.RECORDING ||
             orionSttState == com.openminis.app.speech.RecognitionState.STARTING ->
-            MinisMood.LISTENING
-        orionAnswering || orionTtsSpeaking -> MinisMood.SPEAKING
-        isStreaming -> MinisMood.THINKING
-        else -> MinisMood.STANDBY
+            OrionMood.LISTENING
+        orionAnswering || orionTtsSpeaking -> OrionMood.SPEAKING
+        isStreaming -> OrionMood.THINKING
+        else -> OrionMood.STANDBY
     }
     // Each chunk changes the answer length; that integer is the orb's pulse
     // counter, so the sphere beats once per arriving piece of the reply.
@@ -3802,8 +3802,8 @@ fun ChatScreen(
             // for every turn, typed or spoken. In voice mode the panel's big
             // orb already covers listening, so this one only speaks up for
             // the phases that happen outside it.
-            MinisPresenceStrip(
-                listening = orionMood == MinisMood.LISTENING && !orionVoiceMode,
+            OrionPresenceStrip(
+                listening = orionMood == OrionMood.LISTENING && !orionVoiceMode,
                 streaming = isStreaming,
                 answering = orionAnswering || orionTtsSpeaking,
                 levels = orionLevels,

@@ -515,6 +515,10 @@ class MainActivity : ComponentActivity() {
         // VOICE_COMMAND is the legacy equivalent some ROMs and headsets use.
         val isAssistInvocation = intent?.action == Intent.ACTION_ASSIST ||
             intent?.action == Intent.ACTION_VOICE_COMMAND
+        if (isAssistInvocation) {
+            // [T-orion-autostart] Bring the phone's own model back with no tap.
+            com.openminis.app.localmodel.LocalModelBoot.onAssistInvocation(this)
+        }
         val explicitDeepLink = if (isAssistInvocation) {
             DeepLinkAction.NewVoiceChat
         } else {
@@ -743,6 +747,9 @@ class MainActivity : ComponentActivity() {
         if (intent.action == Intent.ACTION_ASSIST ||
             intent.action == Intent.ACTION_VOICE_COMMAND
         ) {
+            // [T-orion-autostart] Warm assist invocation: the process is alive
+            // but the engine may have been stopped or reclaimed.
+            com.openminis.app.localmodel.LocalModelBoot.onAssistInvocation(this)
             handleDeepLink(android.net.Uri.parse("minis://action/voice_chat"))
             return
         }

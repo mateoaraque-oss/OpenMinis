@@ -2757,6 +2757,9 @@
     <string name="orion_local_context">Context window</string>
     <string name="orion_local_threads">CPU threads</string>
     <string name="orion_local_mmap">Memory-map the model file</string>
+    <string name="orion_local_autostart_title">Start with Orion</string>
+    <string name="orion_local_autostart_subtitle">When you invoke Orion as your assistant, load the last model automatically.</string>
+    <string name="orion_local_autostart_loading">Loading your model on this phone&#8230;</string>
     <string name="orion_local_log">Show engine log</string>
     <string name="orion_local_size_hint">1&#8211;3B Q4 models run best on 8 GB of RAM.</string>
 </resources>

@@ -2027,6 +2027,9 @@
     <string name="orion_local_context">Ventana de contexto</string>
     <string name="orion_local_threads">Hilos de CPU</string>
     <string name="orion_local_mmap">Mapear el archivo del modelo en memoria</string>
+    <string name="orion_local_autostart_title">Arrancar con Orion</string>
+    <string name="orion_local_autostart_subtitle">Al invocar a Orion como asistente, carga el último modelo automáticamente.</string>
+    <string name="orion_local_autostart_loading">Cargando tu modelo en este teléfono&#8230;</string>
     <string name="orion_local_log">Ver registro del motor</string>
     <string name="orion_local_size_hint">Los modelos de 1 a 3B en Q4 van mejor con 8 GB de RAM.</string>
 </resources>
