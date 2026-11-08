@@ -160,7 +160,7 @@ object ModelCatalog {
                 // 7.5 GB device leaves less than a gigabyte for the context.
                 val headroomPenalty = if (ramGb < model.minDeviceRamGb + 1.0) 1 else 0
                 tierScore * 10 - headroomPenalty
-            }
+            } ?: fits.first()
         }
         // Nothing measured fits — storage may be nearly full or the RAM query
         // failed (it can on some ROMs). The smallest file is the honest answer.
