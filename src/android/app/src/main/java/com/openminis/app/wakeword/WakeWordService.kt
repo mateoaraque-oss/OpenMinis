@@ -19,7 +19,8 @@ import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.openminis.app.MainActivity
@@ -52,7 +53,7 @@ import java.nio.ByteOrder
  *    microphone foreground service from the background, so the app has to be
  *    opened once. Saying the wait word is worth that one tap.
  */
-class WakeWordService : Service(), DefaultLifecycleObserver {
+class WakeWordService : Service(), LifecycleEventObserver {
 
     companion object {
         private const val TAG = "OrionWakeWord"
@@ -160,16 +161,24 @@ class WakeWordService : Service(), DefaultLifecycleObserver {
     override fun onBind(intent: Intent?): IBinder? = null
 
     // ── lifecycle: never listen while Orion is on screen ────────────────
-    override fun onStart(owner: LifecycleOwner) {
-        // The app is visible: it may capture audio for a voice message, and a
-        // wake word firing on its own reply would loop.
-        paused = true
-        Log.d(TAG, "paused (app in foreground)")
-    }
-
-    override fun onStop(owner: LifecycleOwner) {
-        paused = false
-        Log.d(TAG, "resumed (app in background)")
+    //
+    // LifecycleEventObserver rather than DefaultLifecycleObserver: the latter
+    // also declares onCreate/onDestroy, which makes a plain `super.onCreate()`
+    // ambiguous inside a Service.
+    override fun onStateChanged(source: LifecycleOwner, event: Lifecycle.Event) {
+        when (event) {
+            Lifecycle.Event.ON_START -> {
+                // The app is visible: it may capture audio for a voice message,
+                // and a wake word firing on its own reply would loop.
+                paused = true
+                Log.d(TAG, "paused (app in foreground)")
+            }
+            Lifecycle.Event.ON_STOP -> {
+                paused = false
+                Log.d(TAG, "resumed (app in background)")
+            }
+            else -> Unit
+        }
     }
 
     // ── microphone loop ─────────────────────────────────────────────────
@@ -189,7 +198,9 @@ class WakeWordService : Service(), DefaultLifecycleObserver {
                     continue
                 }
             }
-            val record = openRecord() ?: run {
+            val record = openRecord()
+            if (record == null) {
+                // Mic busy (call, recorder) or refused: retry without spinning.
                 delay(5_000)
                 continue
             }
