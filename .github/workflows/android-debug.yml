@@ -187,17 +187,33 @@ jobs:
           cp deps/build/rclone/rclone.aar src/android/app/libs/rclone.aar
           ls -lh src/android/app/libs/rclone.aar
 
-      # [T-orion-stable-debug-key] AGP writes ~/.android/debug.keystore on the
-      # first build of a fresh runner, so every CI run used to sign with a
+      # [T-orion-stable-debug-key] AGP used to write ~/.android/debug.keystore
+      # on the first build of a fresh runner, so every CI run signed with a
       # different key and `adb install -r` failed with
       # INSTALL_FAILED_UPDATE_INCOMPATIBLE — each update forced an uninstall,
-      # which wiped chats and settings. Caching the keystore keeps one debug
-      # identity across builds so a new APK installs over the previous one.
+      # which wiped chats and settings. The earlier `~/.android` cache turned
+      # out to capture 362 bytes of metadata (AGP writes the keystore
+      # elsewhere on the runner), so cache the keystore file itself and
+      # generate it explicitly when the cache misses.
       - name: Cache debug signing key
         uses: actions/cache@v4
         with:
-          path: ~/.android
-          key: android-debug-keystore-v1
+          path: ~/.android/orion-debug.keystore
+          key: orion-debug-keystore-v2
+
+      - name: Ensure stable debug keystore
+        run: |
+          KS="$HOME/.android/orion-debug.keystore"
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$KS" ]; then
+            keytool -genkeypair -v \
+              -keystore "$KS" \
+              -storepass android -keypass android \
+              -alias oriondebug -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Orion Debug, OU=Orion, O=Orion, L=NA, ST=NA, C=NA"
+          fi
+          echo "ORION_DEBUG_KEYSTORE=$KS" >> "$GITHUB_ENV"
+          keytool -list -keystore "$KS" -storepass android | tail -3
 
       # [T-orion-wake-word] openWakeWord models (Apache-2.0 code, models
       # CC BY-NC-SA 4.0). 3.7 MB total, fetched from the upstream v0.5.1

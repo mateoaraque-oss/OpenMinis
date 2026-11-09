@@ -32,12 +32,29 @@ android {
     // Build.VERSION.SDK_INT >= 36 (see DynamicIslandSupport / AgentForegroundService).
     compileSdk = 36
 
+    // [T-orion-stable-debug-key] One debug identity across CI builds: a
+    // different key per run makes `adb install -r` fail with
+    // INSTALL_FAILED_UPDATE_INCOMPATIBLE, and the forced uninstall wipes
+    // chats and settings. The workflow caches the keystore and exports its
+    // path; local builds keep AGP's default debug key.
+    signingConfigs {
+        val orionKeystore = System.getenv("ORION_DEBUG_KEYSTORE")
+        if (!orionKeystore.isNullOrBlank()) {
+            maybeCreate("debug").apply {
+                storeFile = file(orionKeystore)
+                storePassword = "android"
+                keyAlias = "oriondebug"
+                keyPassword = "android"
+            }
+        }
+    }
+
     defaultConfig {
         applicationId = "com.openminis.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 45
-        versionName = "1.23"
+        versionCode = 46
+        versionName = "1.24"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
