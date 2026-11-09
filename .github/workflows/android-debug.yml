@@ -187,6 +187,18 @@ jobs:
           cp deps/build/rclone/rclone.aar src/android/app/libs/rclone.aar
           ls -lh src/android/app/libs/rclone.aar
 
+      # [T-orion-stable-debug-key] AGP writes ~/.android/debug.keystore on the
+      # first build of a fresh runner, so every CI run used to sign with a
+      # different key and `adb install -r` failed with
+      # INSTALL_FAILED_UPDATE_INCOMPATIBLE — each update forced an uninstall,
+      # which wiped chats and settings. Caching the keystore keeps one debug
+      # identity across builds so a new APK installs over the previous one.
+      - name: Cache debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android
+          key: android-debug-keystore-v1
+
       - name: Assemble debug APK
         working-directory: src/android
         run: |
