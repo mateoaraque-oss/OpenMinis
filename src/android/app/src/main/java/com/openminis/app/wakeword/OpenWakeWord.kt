@@ -124,7 +124,7 @@ class OpenWakeWord(
         require(wakeIn.size == 3 && wakeIn[1] == FEATURES_PER_STEP && wakeIn[2] == EMB_DIM) {
             "wake input shape ${wakeIn.joinToString()} unexpected"
         }
-        Log.i(
+        Log.w(
             TAG,
             "models ready: mel ${melShape.joinToString()} emb ${embOutShape.joinToString()} " +
                 "wake ${wake.getOutputTensor(0).shape().joinToString()}",

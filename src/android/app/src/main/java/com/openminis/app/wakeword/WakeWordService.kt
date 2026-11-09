@@ -295,11 +295,11 @@ class WakeWordService : Service(), LifecycleEventObserver {
                     best = s
                     bestAt = i
                 }
-                if (s > 0.2f) Log.i(TAG, "TEST t=${"%.2f".format(i / 16_000f)}s score=${"%.3f".format(s)}")
+                if (s > 0.2f) Log.w(TAG, "TEST t=${"%.2f".format(i / 16_000f)}s score=${"%.3f".format(s)}")
                 i += chunk.size
             }
             detector.close()
-            Log.i(TAG, "TEST DONE max=${"%.3f".format(best)} at ${"%.2f".format(bestAt / 16_000f)}s")
+            Log.w(TAG, "TEST DONE max=${"%.3f".format(best)} at ${"%.2f".format(bestAt / 16_000f)}s")
             stopSelf()
         } catch (t: Throwable) {
             Log.e(TAG, "TEST failed: ${t.message}", t)
