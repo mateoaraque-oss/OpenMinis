@@ -57,12 +57,17 @@ class OpenWakeWord(
     private var rawCount = 0
 
     private val melInput: Array<FloatArray>
-    private val melOutput: Array<Array<FloatArray>>
     private val embInput: Array<Array<Array<FloatArray>>> =
         Array(1) { Array(EMB_WINDOW_FRAMES) { Array(MEL_BINS) { FloatArray(1) } } }
 
     /** Embedding output laid out exactly as the tensor expects. */
     private val embOutput: Any
+
+    /** Mel output buffer; rank differs between the ONNX (3-D) and TFLite (4-D) builds. */
+    private val melOutput: Any
+
+    /** Flattened mel frames for the step that just ran. */
+    private val melFlat = FloatArray(MEL_FRAMES_PER_STEP * MEL_BINS)
 
     private val wakeInput: Array<Array<FloatArray>> =
         Array(1) { Array(FEATURES_PER_STEP) { FloatArray(EMB_DIM) } }
@@ -88,11 +93,21 @@ class OpenWakeWord(
         mel.resizeInput(0, intArrayOf(1, MEL_WINDOW))
         mel.allocateTensors()
         val melShape = mel.getOutputTensor(0).shape()
-        require(melShape.size == 3 && melShape[1] == MEL_FRAMES_PER_STEP && melShape[2] == MEL_BINS) {
-            "mel output shape ${melShape.joinToString()} (expected [1,$MEL_FRAMES_PER_STEP,$MEL_BINS])"
+        // TFLite builds of the same model report [1,1,8,32] where the ONNX
+        // export reports [8,1,32]: batch and channel axes differ, but the
+        // last two dimensions are always (frames, bins).
+        require(melShape.size >= 3 &&
+            melShape[melShape.size - 2] == MEL_FRAMES_PER_STEP &&
+            melShape[melShape.size - 1] == MEL_BINS
+        ) {
+            "mel output shape ${melShape.joinToString()} (expected [..,$MEL_FRAMES_PER_STEP,$MEL_BINS])"
         }
         melInput = Array(1) { FloatArray(MEL_WINDOW) }
-        melOutput = Array(1) { Array(MEL_FRAMES_PER_STEP) { FloatArray(MEL_BINS) } }
+        melOutput = when (melShape.size) {
+            3 -> Array(1) { Array(MEL_FRAMES_PER_STEP) { FloatArray(MEL_BINS) } }
+            4 -> Array(1) { Array(1) { Array(MEL_FRAMES_PER_STEP) { FloatArray(MEL_BINS) } } }
+            else -> error("mel output rank ${melShape.size} unsupported")
+        }
 
         val embIn = emb.getInputTensor(0).shape()
         require(embIn.size == 4 && embIn[1] == EMB_WINDOW_FRAMES && embIn[2] == MEL_BINS) {
@@ -150,8 +165,10 @@ class OpenWakeWord(
 
         // `_get_melspectrogram` applies x/10 + 2, the transform that makes the
         // small ONNX/TFLite frontend match Google's TFHub implementation.
+        flattenMel(melOutput, melFlat)
         for (f in 0 until MEL_FRAMES_PER_STEP) {
-            val row = FloatArray(MEL_BINS) { melOutput[0][f][it] / 10f + 2f }
+            val base = f * MEL_BINS
+            val row = FloatArray(MEL_BINS) { melFlat[base + it] / 10f + 2f }
             appendMel(row)
         }
 
@@ -197,6 +214,22 @@ class OpenWakeWord(
             val row = melBuf[(first + r) % MEL_MAX_ROWS]
             for (c in 0 until MEL_BINS) embInput[0][r][c][0] = row[c]
         }
+    }
+
+    /** Copy a nested TFLite output tensor into [dst], in row-major order. */
+    private fun flattenMel(src: Any, dst: FloatArray) {
+        var k = 0
+        fun walk(node: Any?) {
+            when (node) {
+                is FloatArray -> {
+                    System.arraycopy(node, 0, dst, k, node.size)
+                    k += node.size
+                }
+                is Array<*> -> for (child in node) walk(child)
+                else -> Unit
+            }
+        }
+        walk(src)
     }
 
     private fun appendFeature(embedding: FloatArray) {
