@@ -2778,7 +2778,7 @@
     <string name="orion_local_autostart_loading">Loading your model on this phone&#8230;</string>
     <string name="orion_local_log">Show engine log</string>
     <string name="orion_local_size_hint">1&#8211;3B Q4 models run best on 8 GB of RAM.</string>
-    <string name="orion_local_chat_only_hint">On the phone Orion answers in text. Screen control and the other tools need a cloud model.</string>
+    <string name="orion_local_tools_hint">With a model that supports tool calls (Qwen 2.5, Llama 3.2) Orion can read the screen, tap, type, open links and use the phone\'s apps offline. Other models only chat.</string>
 
     <!-- [T-orion-model-catalog] Recommended model download. -->
     <string name="orion_models_empty_title">No model on this phone yet</string>

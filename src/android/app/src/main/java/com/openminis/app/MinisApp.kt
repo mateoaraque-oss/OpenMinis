@@ -38,6 +38,7 @@ import com.openminis.app.sandbox.PRootKernel
 import com.openminis.app.sandbox.RootfsManager
 import com.openminis.app.sandbox.offload.AccessibilityOffloadHandler
 import com.openminis.app.sandbox.offload.AlarmOffloadHandler
+import com.openminis.app.sandbox.offload.AppOffloadHandler
 import com.openminis.app.sandbox.offload.BrowserUseOffloadHandler
 import com.openminis.app.sandbox.offload.CalendarOffloadHandler
 import com.openminis.app.sandbox.offload.ClipboardOffloadHandler
@@ -746,6 +747,7 @@ class MinisApp : Application(), ImageLoaderFactory {
         // materialized lazily. Starting here means the abstract socket is
         // reachable even before any shell session is launched.
         NativeOffloadServer.register("android-alarm", AlarmOffloadHandler(this))
+        NativeOffloadServer.register("android-app", AppOffloadHandler(this))
         NativeOffloadServer.register("android-calendar", CalendarOffloadHandler(this))
         NativeOffloadServer.register("android-clipboard", ClipboardOffloadHandler(this))
         NativeOffloadServer.register("android-contacts", ContactsOffloadHandler(this))

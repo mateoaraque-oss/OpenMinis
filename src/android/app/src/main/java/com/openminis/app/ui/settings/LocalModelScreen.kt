@@ -439,11 +439,11 @@ fun LocalModelScreen(
                 modifier = Modifier.padding(top = 10.dp, bottom = 6.dp),
             )
 
-            // [T-orion-local-chat] On-device turns run without the agent tool
-            // loop (see LocalChatMode); say so where the model is started
-            // instead of letting the user discover it mid-request.
+            // [T-orion-local-tools] What the phone model can do depends on its
+            // chat template: say so where the model is started instead of
+            // letting the user discover it mid-request.
             Text(
-                text = stringResource(R.string.orion_local_chat_only_hint),
+                text = stringResource(R.string.orion_local_tools_hint),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 6.dp),

@@ -74,6 +74,105 @@ object AgentTools {
     }
 
     /**
+     * [T-orion-local-tools] The tool subset an on-device model gets.
+     *
+     * Same names and same arguments as the real definitions, because the
+     * dispatcher does not know which model called it. Only the prose shrinks:
+     * every schema is tokens the phone has to prefill before the first token,
+     * and a 1-3B model reads a 900-character description no better than a
+     * 90-character one.
+     *
+     * `shell_execute` is the whole phone: the `android-*` offload commands
+     * (accessibility, open, alarm, calendar, contacts, clipboard,
+     * notifications, weather, speech) are resolved from the shell, so one
+     * tool covers screen control, links and the device APIs. The remaining
+     * four are the ones a chat actually reaches for.
+     *
+     * Deliberately absent: browser_use and subagent_task (huge schemas, and a
+     * phone model drives neither well), read_image (the recommended models
+     * are text-only) and memory (the compact history has no room for it).
+     */
+    fun makeLocalAgentTools(): List<AgentToolDefinition> = listOf(
+        localShellDefinition(),
+        localFileReadDefinition(),
+        localFileWriteDefinition(),
+        localFileEditDefinition(),
+        localWebSearchDefinition(),
+    )
+
+    private fun localTitle(): AgentToolParam =
+        AgentToolParam("string", "Short summary of this call for the user.")
+
+    private fun localShellDefinition(): AgentToolDefinition = AgentToolDefinition(
+        name = "shell_execute",
+        description = "Run a shell command on the phone. This is how you act on the phone: " +
+            "android-a11y-cli reads the screen and taps or types, android-app opens an app " +
+            "by name, android-open opens links, and other android-* commands handle alarms, " +
+            "calendar, contacts, clipboard, notifications, weather and speech. " +
+            "Run `<command> --help` when unsure.",
+        parameters = mapOf(
+            "tool_title" to localTitle(),
+            "command" to AgentToolParam("string", "Command to run. Multi-line is fine."),
+            "timeout" to AgentToolParam("integer", "Seconds (default 900)."),
+        ),
+        required = listOf("tool_title", "command"),
+        propertyOrdering = listOf("tool_title", "command", "timeout"),
+    )
+
+    private fun localFileReadDefinition(): AgentToolDefinition = AgentToolDefinition(
+        name = FileReadTool.NAME,
+        description = "Read a text file from the Linux filesystem, for example " +
+            "/var/minis/workspace/notes.md.",
+        parameters = mapOf(
+            "tool_title" to localTitle(),
+            "path" to AgentToolParam("string", "Absolute Linux path."),
+        ),
+        required = listOf("tool_title", "path"),
+        propertyOrdering = listOf("tool_title", "path"),
+    )
+
+    private fun localFileWriteDefinition(): AgentToolDefinition = AgentToolDefinition(
+        name = FileWriteTool.NAME,
+        description = "Write text to a file, creating it if needed. Use append=true to add " +
+            "to the end of an existing file.",
+        parameters = mapOf(
+            "tool_title" to localTitle(),
+            "path" to AgentToolParam("string", "Absolute Linux path."),
+            "content" to AgentToolParam("string", "Text to write."),
+            "append" to AgentToolParam("boolean", "Append instead of overwriting."),
+        ),
+        required = listOf("tool_title", "path", "content"),
+        propertyOrdering = listOf("tool_title", "path", "content", "append"),
+    )
+
+    private fun localFileEditDefinition(): AgentToolDefinition = AgentToolDefinition(
+        name = FileEditTool.NAME,
+        description = "Replace exact text inside an existing file. Read the file first; " +
+            "the text to find must match exactly, including spaces.",
+        parameters = mapOf(
+            "tool_title" to localTitle(),
+            "path" to AgentToolParam("string", "Absolute Linux path."),
+            "old_string" to AgentToolParam("string", "Exact text to find."),
+            "new_string" to AgentToolParam("string", "Replacement text."),
+            "replace_all" to AgentToolParam("boolean", "Replace every occurrence."),
+        ),
+        required = listOf("tool_title", "path", "old_string", "new_string"),
+        propertyOrdering = listOf("tool_title", "path", "old_string", "new_string", "replace_all"),
+    )
+
+    private fun localWebSearchDefinition(): AgentToolDefinition = AgentToolDefinition(
+        name = WebSearchTool.NAME,
+        description = "Search the web and get ranked titles, URLs and snippets. Needs a " +
+            "working network connection.",
+        parameters = mapOf(
+            "tool_title" to localTitle(),
+            "query" to AgentToolParam("string", "Search query."),
+        ),
+        required = listOf("tool_title", "query"),
+        propertyOrdering = listOf("tool_title", "query"),
+    )
+
+    /**
      * [T-sub-agents-v1] The one sub agent tool: delegate, and inspect or stop
      * what you delegated.
      *

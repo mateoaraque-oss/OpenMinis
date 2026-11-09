@@ -125,6 +125,21 @@ object LlamaServer {
     fun modelId(): String? = (_status.value as? LocalServerStatus.Running)?.modelId
 
     /**
+     * [T-orion-local-tools] The `.gguf` this session runs, or the one Orion
+     * would load next. Used to decide whether the on-device model can be
+     * given tool schemas at all (see [GgufTools]).
+     */
+    fun activeModelFile(context: Context): File? {
+        val running = when (val st = _status.value) {
+            is LocalServerStatus.Running -> st.modelPath
+            is LocalServerStatus.Starting -> st.modelPath
+            else -> null
+        }
+        if (running != null) return File(running)
+        return lastLaunch(context)?.model?.file
+    }
+
+    /**
      * [T-orion-autostart] Remember the last model a user actually launched so
      * Orion can bring it back by itself the next time it is invoked as the
      * system assistant (after a reboot, a force-stop, or simply a long idle

@@ -2434,11 +2434,14 @@ class ChatViewModel(
      * [T-orion-local-chat] True when the selected entry is the bundled
      * on-device engine ([com.openminis.app.localmodel.LocalModelProvider]).
      *
-     * On-device models get a compact system prompt and no tool schemas: the
-     * full agent prompt plus twelve tool definitions is several times the
-     * context window the engine is started with, and llama-server answers
-     * `400 exceed_context_size_error` instead of replying. It is also minutes
-     * of prompt prefill on a phone CPU. See [LocalChatMode].
+     * On-device models get a compact system prompt and a small tool subset
+     * instead of the cloud agent prompt: the full prompt plus twelve tool
+     * definitions is several times the context window the engine is started
+     * with, and llama-server answers `400 exceed_context_size_error` instead
+     * of replying. It is also minutes of prompt prefill on a phone CPU.
+     *
+     * The subset is only exposed when the model's own chat template supports
+     * tool calls; see [com.openminis.app.localmodel.LocalChatMode].
      */
     private val isLocalModelSelected: Boolean
         get() = currentModel?.provider.equals(
@@ -2514,10 +2517,15 @@ class ChatViewModel(
      */
     private val agentTools: List<AgentToolDefinition>
         get() = if (isLocalModelSelected) {
-            // [T-orion-local-chat] See [isLocalModelSelected]: the tool schemas
-            // alone would overflow the phone engine's context before the first
-            // message.
-            emptyList()
+            // [T-orion-local-tools] On-device models get a small, terse subset
+            // of the real tools so they can act on the phone offline. Only
+            // when the GGUF's chat template supports tool calls: llama.cpp
+            // rejects the whole request for a model that does not.
+            if (com.openminis.app.localmodel.LocalChatMode.supportsTools(context)) {
+                AgentTools.makeLocalAgentTools()
+            } else {
+                emptyList()
+            }
         } else AgentTools.makeAgentTools(
             // [T-android-vision-group / GH#182] The main model's own vision
             // capability. When false but a Vision Group is configured, read_image
@@ -11921,13 +11929,18 @@ class ChatViewModel(
                         // the provider, never to agentHistory. Not on the
                         // tool-less wrap-up turn, which is ending anyway.
                         var requestMessages = requestContext.messages
-                        // [T-orion-local-chat] The phone engine 400s on a
-                        // request that does not fit instead of trimming it, so
-                        // keep only the newest turns that do.
                         if (isLocalModelSelected) {
+                            // [T-orion-local-chat] See [isLocalModelSelected]: the phone
+                            // engine 400s on a request that does not fit. The system
+                            // prompt and tool schemas travel outside the history, so
+                            // their size comes out of the window before the history
+                            // gets a budget.
+                            val localTools = if (helperWrapUpInjected) emptyList() else agentTools
                             requestMessages = com.openminis.app.localmodel.LocalChatMode.trimToFit(
                                 requestMessages,
                                 currentModel?.contextWindow,
+                                promptChars = (loopSystemPrompt?.length ?: 0) +
+                                    localTools.sumOf { it.toOpenAIJson().toString().length },
                             )
                         }
                         if (!helperWrapUpInjected) {
@@ -16282,12 +16295,17 @@ class ChatViewModel(
         }
 
     private fun buildSystemPrompt(): String? {
-        // [T-orion-local-chat] The phone engine gets a short identity prompt
+        // [T-orion-local-chat] The phone engine gets a compact identity prompt
         // instead of the agent prompt: see [isLocalModelSelected]. Without
         // this, a local chat never answered at all (the prompt did not fit
-        // the engine's context and llama-server returned 400).
+        // the engine's context and llama-server returned 400). When the
+        // model's template supports tools, the same prompt also teaches it
+        // the handful of shell commands that control the phone.
         if (isLocalModelSelected) {
-            return com.openminis.app.localmodel.LocalChatMode.systemPrompt(context)
+            return com.openminis.app.localmodel.LocalChatMode.systemPrompt(
+                context,
+                toolsEnabled = com.openminis.app.localmodel.LocalChatMode.supportsTools(context),
+            )
         }
         // Cache-friendly layout: keep `base` byte-stable by stripping out anything
         // that varies per request, then append a "Runtime context" suffix at the
@@ -16494,6 +16512,7 @@ CLI tools at /usr/local/bin with the `android-` prefix give you access to Androi
 - android-speech — speech transcription (`transcribe [--engine system|provider|auto] [--source mic|<file>] [--language BCP47] [--duration SEC, max 60] [--max N] [--on-device]`; `listen` is an alias). `--engine provider` uses the Voice Input model instead (audio is uploaded to that service; also takes `--source <audio file>`), `--engine auto` falls back to it when the system recognizer cannot be reached and says `audio_sent_to`; default `--engine system`. Default is the regular recognizer; `--on-device` prefers the on-device one; either falls back to the other once and the result names `recognizer` / `fallback_used`. `languages` lists what the recognizer reports (error `unavailable` when it reports nothing); `status [--probe]` says whether recognition can work and why not. JSON envelope {ok, data|error{code,message}}; non-zero exit on failure. Requires RECORD_AUDIO.
 - android-weather <latitude> <longitude> — Open-Meteo forecast (current + hourly + daily). No API key needed.
 - android-shizuku-cli — invoke privileged Android system APIs (package management, settings, system commands) via Shizuku when granted. Curated subcommands return structured JSON; for anything not covered, fall back to `android-shizuku-cli exec <any shell command>` which runs the command via `sh -c` with Shizuku privilege (same surface as `adb shell`). Run with no args (or --help) for the subcommand list.
+- android-app — list and launch installed apps (`list [--query <text>]` returns name + package, `launch <name|package>` opens one). Use it to open an app in one call instead of walking the launcher with android-a11y-cli.
 - android-a11y-cli — drive system UI (read screen, tap, type, swipe, scroll) via the Android AccessibilityService when enabled. Run with no args (or --help) for the subcommand list.
 - minis-open <url-or-path>: Opens a resource inside Orion without leaving the chat. Accepts http/https URLs (→ built-in WebKit preview) and chat-resource file paths under /var/minis/** (→ built-in file preview, routed by extension: images to the image viewer, .md to markdown preview, .html to HTML preview, .pdf/office docs to QuickLook, audio/video to the media player, else share sheet). Examples: minis-open https://example.com, minis-open /var/minis/workspace/report.md, minis-open /var/minis/attachments/chart.png. Prefer this over android-open for anything that can be previewed in-app so the user doesn't lose conversation context. Run android-open via shell_execute for non-web schemes (tel:, mailto:, geo:, intent:, etc.) or when the user explicitly wants the system handler.
 - minis-sessions-cli: Read chat history. `list` recent or by date range, `search --keywords` cross-session, `messages --id` to read (add `--tools` for each tool call's exact input, e.g. the shell command, and its output). Run --help for full options.
