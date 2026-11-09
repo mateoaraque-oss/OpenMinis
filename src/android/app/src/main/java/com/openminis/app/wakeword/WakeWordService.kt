@@ -13,9 +13,17 @@ import android.content.pm.ServiceInfo
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.net.Uri
 import android.os.Build
+import android.os.Bundle
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.PowerManager
+import android.provider.Settings
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -25,6 +33,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.openminis.app.MainActivity
 import com.openminis.app.R
+import com.openminis.app.deeplink.DeepLinkCoordinator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -36,9 +45,10 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.maxOf
 
 /**
- * [T-orion-wake-word] Always-listening "Hey Jarvis" foreground service.
+ * [T-orion-wake-word] Always-listening wake phrase foreground service.
  *
  * Android only gives the OEM a true low-power hotword (that is why "Ok Google"
  * works with the screen off on a 1 %-an-hour budget). A third-party app has to
@@ -51,7 +61,19 @@ import java.nio.ByteOrder
  *    the OS stops the service after a few minutes;
  *  - does not restart itself after a reboot — Android 15 blocks starting a
  *    microphone foreground service from the background, so the app has to be
- *    opened once. Saying the wait word is worth that one tap.
+ *    opened once. Saying the wake phrase is worth that one tap.
+ *
+ * [T-orion-custom-wake] The phrase is configurable. Vosk decodes the mic with
+ * a grammar restricted to the user's phrase (see [VoskWakeWord]), so any
+ * Spanish sentence works with no account, key or training. If the bundled
+ * model is missing the service falls back to the older fixed "Hey Jarvis"
+ * detector so an update can never leave the user without a wake word.
+ *
+ * [T-orion-wake-panel] On a match the service shows a translucent bar over the
+ * current app (like Gemini), captures the command with the system recognizer,
+ * and hands the transcript to a fresh Orion chat. When the overlay permission
+ * or the speech recognizer is unavailable it falls back to the full-screen
+ * ACTION_ASSIST voice flow.
  */
 class WakeWordService : Service(), LifecycleEventObserver {
 
@@ -63,11 +85,17 @@ class WakeWordService : Service(), LifecycleEventObserver {
         const val ACTION_START = "com.openminis.app.wakeword.START"
         const val ACTION_STOP = "com.openminis.app.wakeword.STOP"
         const val ACTION_TEST_WAV = "com.openminis.app.wakeword.TEST_WAV"
+        const val ACTION_TEST_PANEL = "com.openminis.app.wakeword.TEST_PANEL"
+        const val EXTRA_TEXT = "text"
 
         private const val PREFS = "orion_wake_word"
         private const val KEY_ENABLED = "enabled"
+        private const val KEY_PHRASE = "phrase"
+
+        const val DEFAULT_PHRASE = "oye orión"
 
         private const val RETRIGGER_MS = 4_000L
+        private const val PANEL_TIMEOUT_MS = 12_000L
 
         fun isEnabled(context: Context): Boolean =
             context.getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(KEY_ENABLED, false)
@@ -75,6 +103,33 @@ class WakeWordService : Service(), LifecycleEventObserver {
         fun setEnabled(context: Context, enabled: Boolean) {
             context.getSharedPreferences(PREFS, MODE_PRIVATE)
                 .edit().putBoolean(KEY_ENABLED, enabled).apply()
+        }
+
+        /** The phrase the user typed in Settings; never blank. */
+        fun getPhrase(context: Context): String =
+            context.getSharedPreferences(PREFS, MODE_PRIVATE)
+                .getString(KEY_PHRASE, DEFAULT_PHRASE)
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?: DEFAULT_PHRASE
+
+        /**
+         * Persist a new phrase. The caller restarts the service with [restart]
+         * so the Vosk grammar is rebuilt; the old recognizer is bound to the
+         * old phrase.
+         */
+        fun setPhrase(context: Context, phrase: String) {
+            val clean = phrase.trim().replace(Regex("\\s+"), " ")
+            context.getSharedPreferences(PREFS, MODE_PRIVATE)
+                .edit().putString(KEY_PHRASE, clean.ifEmpty { DEFAULT_PHRASE }).apply()
+        }
+
+        /** Stop and start the service so the detector picks up a new phrase. */
+        fun restart(context: Context) {
+            context.stopService(Intent(context, WakeWordService::class.java))
+            Handler(Looper.getMainLooper()).postDelayed({
+                if (isEnabled(context) && hasMic(context)) start(context)
+            }, 400)
         }
 
         fun hasMic(context: Context): Boolean =
@@ -107,10 +162,16 @@ class WakeWordService : Service(), LifecycleEventObserver {
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val main = Handler(Looper.getMainLooper())
     private var job: Job? = null
-    private var detector: OpenWakeWord? = null
+    private var vosk: VoskWakeWord? = null
+    private var oww: OpenWakeWord? = null
     @Volatile private var paused = false
     @Volatile private var lastTrigger = 0L
+
+    private var panel: WakePanelController? = null
+    private var speech: SpeechRecognizer? = null
+    private val panelTimeout = Runnable { closePanel(resume = true) }
 
     override fun onCreate() {
         super.onCreate()
@@ -127,6 +188,16 @@ class WakeWordService : Service(), LifecycleEventObserver {
                 // the phone. Harmless in the field (the action is not exported).
                 startForegroundNotification()
                 scope.launch { runWavTest(path) }
+                return START_NOT_STICKY
+            }
+            ACTION_TEST_PANEL -> {
+                // Debug-only: `text` skips the microphone and exercises the
+                // transcript -> pending prompt -> new chat bridge.
+                startForegroundNotification()
+                val text = intent.getStringExtra(EXTRA_TEXT)
+                main.post {
+                    if (text.isNullOrBlank()) openWakePanel() else deliverPrompt(text)
+                }
                 return START_NOT_STICKY
             }
             ACTION_STOP -> {
@@ -152,9 +223,14 @@ class WakeWordService : Service(), LifecycleEventObserver {
         ProcessLifecycleOwner.get().lifecycle.removeObserver(this)
         paused = true
         job?.cancel()
+        job = null
+        main.removeCallbacks(panelTimeout)
+        runCatching { closePanel(resume = false) }
         scope.cancel()
-        runCatching { detector?.close() }
-        detector = null
+        runCatching { vosk?.close() }
+        runCatching { oww?.close() }
+        vosk = null
+        oww = null
         super.onDestroy()
     }
 
@@ -171,11 +247,12 @@ class WakeWordService : Service(), LifecycleEventObserver {
                 // The app is visible: it may capture audio for a voice message,
                 // and a wake word firing on its own reply would loop.
                 paused = true
-                Log.d(TAG, "paused (app in foreground)")
+                if (panel?.isShowing == true) main.post { closePanel(resume = false) }
+                Log.w(TAG, "paused (app in foreground)")
             }
             Lifecycle.Event.ON_STOP -> {
                 paused = false
-                Log.d(TAG, "resumed (app in background)")
+                Log.w(TAG, "resumed (app in background)")
             }
             else -> Unit
         }
@@ -189,14 +266,9 @@ class WakeWordService : Service(), LifecycleEventObserver {
                 delay(250)
                 continue
             }
-            if (detector == null) {
-                detector = try {
-                    OpenWakeWord(this)
-                } catch (t: Throwable) {
-                    Log.e(TAG, "detector init failed: ${t.message}", t)
-                    delay(10_000)
-                    continue
-                }
+            if (!ensureEngine()) {
+                delay(10_000)
+                continue
             }
             val record = openRecord()
             if (record == null) {
@@ -210,7 +282,7 @@ class WakeWordService : Service(), LifecycleEventObserver {
                     delay(2_000)
                     continue
                 }
-                Log.i(TAG, "listening")
+                Log.w(TAG, "listening (${engineName()}, phrase=\"${getPhrase(this)}\")")
                 var filled = 0
                 while (scope.isActive && !paused) {
                     val n = record.read(buffer, filled, buffer.size - filled)
@@ -221,8 +293,12 @@ class WakeWordService : Service(), LifecycleEventObserver {
                     filled += n
                     if (filled < buffer.size) continue
                     filled = 0
-                    val score = detector?.push(buffer) ?: 0f
-                    if (score >= OpenWakeWord.THRESHOLD) fire()
+                    if (detect(buffer)) {
+                        fire()
+                        // Leave the inner loop so `finally` releases the mic
+                        // before the panel's recognizer opens it again.
+                        break
+                    }
                 }
             } catch (t: Throwable) {
                 Log.w(TAG, "mic loop: ${t.message}")
@@ -232,6 +308,53 @@ class WakeWordService : Service(), LifecycleEventObserver {
                 runCatching { record.release() }
             }
         }
+    }
+
+    /**
+     * Build the detector for the current phrase. Vosk is preferred; the old
+     * openWakeWord model stays as a fallback when the bundled Vosk asset is
+     * missing (for example a build without the CI asset step).
+     */
+    private suspend fun ensureEngine(): Boolean {
+        if (vosk != null || oww != null) return true
+        val phrase = getPhrase(this)
+
+        if (!VoskWakeWord.isReady(this)) {
+            Log.w(TAG, "installing Vosk model (${phrase})…")
+            runCatching { VoskWakeWord.ensureInstalled(this) }
+                .onFailure { Log.w(TAG, "Vosk model install failed: ${it.message}") }
+        }
+        if (VoskWakeWord.isReady(this)) {
+            try {
+                vosk = VoskWakeWord(this, phrase)
+                Log.w(TAG, "engine=vosk phrase=\"$phrase\"")
+                return true
+            } catch (t: Throwable) {
+                Log.w(TAG, "Vosk init failed: ${t.message}; falling back to openWakeWord")
+            }
+        }
+
+        return try {
+            oww = OpenWakeWord(this)
+            Log.w(TAG, "engine=openWakeWord (built-in \"Hey Jarvis\")")
+            true
+        } catch (t: Throwable) {
+            Log.e(TAG, "detector init failed: ${t.message}", t)
+            false
+        }
+    }
+
+    private fun engineName(): String = when {
+        vosk != null -> "vosk"
+        oww != null -> "openWakeWord"
+        else -> "none"
+    }
+
+    /** One 80 ms chunk through whichever engine is active. */
+    private fun detect(buffer: ShortArray): Boolean {
+        vosk?.let { return it.push(buffer, buffer.size) }
+        val score = oww?.push(buffer) ?: 0f
+        return score >= OpenWakeWord.THRESHOLD
     }
 
     private fun openRecord(): AudioRecord? {
@@ -258,12 +381,146 @@ class WakeWordService : Service(), LifecycleEventObserver {
         }
     }
 
+    // ── wake: panel over the current app (Gemini style) ─────────────────
     private fun fire() {
         val now = System.currentTimeMillis()
         if (now - lastTrigger < RETRIGGER_MS) return
         lastTrigger = now
-        Log.i(TAG, "wake word detected")
+        Log.w(TAG, "wake phrase detected")
         paused = true
+        main.post { openWakePanel() }
+    }
+
+    private fun openWakePanel() {
+        val canOverlay = Settings.canDrawOverlays(this)
+        val canRecognize = SpeechRecognizer.isRecognitionAvailable(this)
+        if (!canOverlay || !canRecognize) {
+            Log.w(TAG, "panel unavailable (overlay=$canOverlay asr=$canRecognize); opening voice chat")
+            openAssistActivity()
+            return
+        }
+        val controller = panel ?: WakePanelController(this).also { panel = it }
+        controller.onClose = { closePanel(resume = true) }
+        controller.show(
+            getString(R.string.orion_wake_panel_title),
+            getString(R.string.orion_wake_panel_hint),
+        )
+        startPanelSpeech()
+        main.removeCallbacks(panelTimeout)
+        main.postDelayed(panelTimeout, PANEL_TIMEOUT_MS)
+    }
+
+    private fun startPanelSpeech() {
+        destroySpeech()
+        val recognizer = try {
+            SpeechRecognizer.createSpeechRecognizer(this)
+        } catch (t: Throwable) {
+            Log.w(TAG, "cannot create SpeechRecognizer: ${t.message}")
+            closePanel(resume = false)
+            openAssistActivity()
+            return
+        }
+        speech = recognizer
+        recognizer.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {
+                panel?.setStatus(getString(R.string.orion_wake_panel_listening))
+            }
+
+            override fun onBeginningOfSpeech() = Unit
+            override fun onRmsChanged(rmsdB: Float) = Unit
+            override fun onBufferReceived(buffer: ByteArray?) = Unit
+
+            override fun onEndOfSpeech() {
+                panel?.setStatus(getString(R.string.orion_wake_panel_processing))
+            }
+
+            override fun onError(error: Int) {
+                Log.w(TAG, "panel speech error $error")
+                main.removeCallbacks(panelTimeout)
+                if (error == SpeechRecognizer.ERROR_NO_MATCH ||
+                    error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+                ) {
+                    panel?.setStatus(getString(R.string.orion_wake_panel_no_match))
+                    main.postDelayed({ closePanel(resume = true) }, 900)
+                } else {
+                    closePanel(resume = false)
+                    openAssistActivity()
+                }
+            }
+
+            override fun onResults(results: Bundle?) {
+                val text = results
+                    ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.firstOrNull()
+                    ?.trim()
+                    .orEmpty()
+                if (text.isNotEmpty()) {
+                    deliverPrompt(text)
+                } else {
+                    onError(SpeechRecognizer.ERROR_NO_MATCH)
+                }
+            }
+
+            override fun onPartialResults(partialResults: Bundle?) {
+                val text = partialResults
+                    ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.firstOrNull()
+                    ?.trim()
+                    .orEmpty()
+                if (text.isNotEmpty()) {
+                    main.removeCallbacks(panelTimeout)
+                    panel?.setStatus(getString(R.string.orion_wake_panel_heard))
+                    panel?.setTranscript(text)
+                }
+            }
+
+            override fun onEvent(eventType: Int, params: Bundle?) = Unit
+        })
+
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "es-ES")
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1_200L)
+        }
+        try {
+            recognizer.startListening(intent)
+        } catch (t: Throwable) {
+            Log.w(TAG, "startListening failed: ${t.message}")
+            closePanel(resume = false)
+            openAssistActivity()
+        }
+    }
+
+    /** Transcript ready: open a fresh chat and let ChatScreen send it. */
+    private fun deliverPrompt(text: String) {
+        val clean = text.trim()
+        if (clean.isEmpty()) return
+        Log.w(TAG, "panel transcript: ${clean.take(80)}")
+        main.removeCallbacks(panelTimeout)
+        closePanel(resume = false)
+        DeepLinkCoordinator.setPendingPrompt(clean)
+        val intent = Intent(this, MainActivity::class.java)
+            .setAction(Intent.ACTION_VIEW)
+            .setData(Uri.parse("minis://action/new_chat"))
+            .addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP,
+            )
+        try {
+            startActivity(intent)
+        } catch (t: Throwable) {
+            Log.w(TAG, "cannot open chat: ${t.message}")
+            paused = false
+        }
+    }
+
+    /** Full-screen fallback when overlays or speech recognition are missing. */
+    private fun openAssistActivity() {
         val intent = Intent(this, MainActivity::class.java)
             .setAction(Intent.ACTION_ASSIST)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -275,31 +532,46 @@ class WakeWordService : Service(), LifecycleEventObserver {
         }
     }
 
-    // ── debug: score a WAV through the same pipeline ────────────────────
+    private fun closePanel(resume: Boolean) {
+        main.removeCallbacks(panelTimeout)
+        destroySpeech()
+        panel?.hide()
+        if (resume) paused = false
+    }
+
+    private fun destroySpeech() {
+        val current = speech ?: return
+        speech = null
+        runCatching { current.cancel() }
+        runCatching { current.destroy() }
+    }
+
+    // ── debug: score a WAV through VoskWakeWord ─────────────────────────
     private suspend fun runWavTest(path: String?) {
         if (path.isNullOrBlank()) {
             Log.w(TAG, "TEST_WAV without path")
             return
         }
         try {
+            if (!VoskWakeWord.isReady(this)) VoskWakeWord.ensureInstalled(this)
+            val phrase = getPhrase(this)
             val pcm = readWav(File(path))
-            val detector = OpenWakeWord(this)
+            val detector = VoskWakeWord(this, phrase)
             val chunk = ShortArray(1_280)
-            var best = 0f
-            var bestAt = 0
+            var hits = 0
+            var chunks = 0
             var i = 0
             while (i + chunk.size <= pcm.size) {
                 System.arraycopy(pcm, i, chunk, 0, chunk.size)
-                val s = detector.push(chunk)
-                if (s > best) {
-                    best = s
-                    bestAt = i
+                if (detector.push(chunk, chunk.size)) {
+                    hits++
+                    Log.w(TAG, "TEST MATCH t=${"%.2f".format(i / 16_000f)}s")
                 }
-                if (s > 0.2f) Log.w(TAG, "TEST t=${"%.2f".format(i / 16_000f)}s score=${"%.3f".format(s)}")
+                chunks++
                 i += chunk.size
             }
             detector.close()
-            Log.w(TAG, "TEST DONE max=${"%.3f".format(best)} at ${"%.2f".format(bestAt / 16_000f)}s")
+            Log.w(TAG, "TEST DONE engine=vosk phrase=\"$phrase\" hits=$hits chunks=$chunks")
             stopSelf()
         } catch (t: Throwable) {
             Log.e(TAG, "TEST failed: ${t.message}", t)
@@ -375,7 +647,7 @@ class WakeWordService : Service(), LifecycleEventObserver {
         )
         val notification: Notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentTitle(getString(R.string.orion_wake_word_notification_title))
+            .setContentTitle(getString(R.string.orion_wake_word_notification_title, getPhrase(this)))
             .setContentText(getString(R.string.orion_wake_word_notification_body))
             .setOngoing(true)
             .setSilent(true)

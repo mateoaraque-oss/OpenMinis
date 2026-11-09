@@ -2020,13 +2020,24 @@
 
     <!-- [T-orion-wake-word] Palabra de activación en el propio teléfono. -->
     <string name="orion_wake_word">Palabra de activación</string>
-    <string name="orion_wake_word_subtitle">Di «Hey Jarvis» con la pantalla apagada</string>
+    <string name="orion_wake_word_subtitle">Di tu frase con la pantalla apagada</string>
     <string name="orion_wake_word_mic_denied">Orion necesita el micrófono para la palabra de activación.</string>
     <string name="orion_wake_word_channel">Palabra de activación</string>
-    <string name="orion_wake_word_notification_title">Escuchando «Hey Jarvis»</string>
+    <string name="orion_wake_word_notification_title">Escuchando «%1$s»</string>
     <string name="orion_wake_word_notification_body">Toca para abrir Orion. El micrófono se apaga mientras Orion está en pantalla.</string>
-    <string name="orion_wake_word_guide_title">«Hey Jarvis» está activo</string>
-    <string name="orion_wake_word_guide_body">Di «Hey Jarvis» desde cualquier app, incluso con la pantalla apagada, y Orion se abre en modo voz.\n\n• El micrófono queda encendido: cuenta con un 2–4 % de batería por hora y una notificación fija. El audio no sale del teléfono.\n• Deja Orion fuera de la optimización de batería (Ajustes › Batería) o Android dejará de escuchar a los pocos minutos.\n• Tras reiniciar, abre Orion una vez: Android 15 no permite abrir el micrófono al arrancar.\n• Apaga este interruptor para dejar de escuchar.</string>
+    <string name="orion_wake_word_guide_title">La palabra de activación está activa</string>
+    <string name="orion_wake_word_guide_body">Di tu frase desde cualquier app, incluso con la pantalla apagada. Aparece un panel flotante como el de Gemini para que digas lo que quieres; Orion abre un chat nuevo y lo envía.\n\n• Cambia la frase cuando quieras en Ajustes › Frase de activación. Se reconoce en español y no necesita cuenta ni internet.\n• El micrófono queda encendido: gasta un 3–5 % de batería por hora y muestra una notificación fija. El audio no sale del teléfono.\n• Permite «Mostrar sobre otras apps» para el panel; sin ese permiso Orion se abre a pantalla completa.\n• Deja Orion fuera de la optimización de batería (Ajustes › Batería) o Android dejará de escuchar a los pocos minutos.\n• Tras reiniciar, abre Orion una vez: Android 15 no permite abrir el micrófono al arrancar.\n• Apaga este interruptor para dejar de escuchar.</string>
+    <string name="orion_wake_phrase_title">Frase de activación</string>
+    <string name="orion_wake_phrase_subtitle">Ahora «%1$s». Toca para cambiarla.</string>
+    <string name="orion_wake_phrase_dialog_body">Escribe la frase que quieres decir. En español funciona mejor; dos o tres palabras evitan activaciones falsas.</string>
+    <string name="orion_wake_phrase_save">Guardar</string>
+    <string name="orion_wake_phrase_cancel">Cancelar</string>
+    <string name="orion_wake_panel_title">Orion</string>
+    <string name="orion_wake_panel_hint">Di lo que quieres…</string>
+    <string name="orion_wake_panel_listening">Te escucho…</string>
+    <string name="orion_wake_panel_processing">Procesando…</string>
+    <string name="orion_wake_panel_heard">Entendido</string>
+    <string name="orion_wake_panel_no_match">No te entendí</string>
     <string name="orion_accessibility">Control de pantalla y acciones</string>
     <string name="orion_accessibility_subtitle">Permite a Orion ver la pantalla y tocar por ti</string>
 

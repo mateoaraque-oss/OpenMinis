@@ -84,4 +84,23 @@ object DeepLinkCoordinator {
         _pendingChatAction.value = null
         return current
     }
+
+    /**
+     * [T-orion-wake-panel] Final transcript captured by the floating wake
+     * panel. The panel lives in WakeWordService, outside the Compose tree, so
+     * it hands the text over here and then launches `minis://action/new_chat`.
+     * ChatScreen consumes it once and sends it as the first message.
+     */
+    private val _pendingPrompt = MutableStateFlow<String?>(null)
+    val pendingPrompt: StateFlow<String?> = _pendingPrompt.asStateFlow()
+
+    fun setPendingPrompt(prompt: String) {
+        _pendingPrompt.value = prompt
+    }
+
+    fun consumePendingPrompt(): String? {
+        val current = _pendingPrompt.value
+        _pendingPrompt.value = null
+        return current
+    }
 }

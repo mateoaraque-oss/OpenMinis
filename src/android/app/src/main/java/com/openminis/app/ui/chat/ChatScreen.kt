@@ -1975,6 +1975,19 @@ fun ChatScreen(
             tracedScrollToItem("SEND-PATH/settle", 0, 0)
         }
     }
+    // [T-orion-wake-panel] The floating wake panel captures the command
+    // outside the Compose tree and leaves it in DeepLinkCoordinator before
+    // launching `minis://action/new_chat`. Send it as the first message of
+    // the freshly-opened chat, exactly as if the user had typed it.
+    LaunchedEffect(sessionId) {
+        val prompt = com.openminis.app.deeplink.DeepLinkCoordinator
+            .consumePendingPrompt() ?: return@LaunchedEffect
+        if (prompt.isBlank()) return@LaunchedEffect
+        viewModel.setInputText("")
+        viewModel.sendMessage(prompt)
+        noteSendForInputModePref()
+        userScrolledAway = false
+    }
     // [T-voice-send-waits-for-asr] Second half of a send deferred until voice
     // input finished. The transcript reaches the composer through the panel's
     // callbacks, so copy the final transcript over explicitly before deciding,

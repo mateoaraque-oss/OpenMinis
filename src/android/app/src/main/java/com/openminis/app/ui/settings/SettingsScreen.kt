@@ -59,6 +59,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -148,6 +149,11 @@ fun SettingsScreen(
     // eviction.
     var wakeWordOn by remember { mutableStateOf(WakeWordService.isEnabled(context)) }
     var showWakeGuide by remember { mutableStateOf(false) }
+    // [T-orion-custom-wake] The phrase is whatever the user types; the row
+    // mirrors the same prefs the service reads so it survives a restart.
+    var wakePhrase by remember { mutableStateOf(WakeWordService.getPhrase(context)) }
+    var showPhraseDialog by remember { mutableStateOf(false) }
+    var phraseDraft by remember { mutableStateOf(wakePhrase) }
     val micPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
@@ -155,7 +161,7 @@ fun SettingsScreen(
             WakeWordService.setEnabled(context, true)
             wakeWordOn = true
             WakeWordService.start(context)
-            requestWakeBatteryExemption(context)
+            requestWakePermissions(context)
             showWakeGuide = true
         } else {
             wakeWordOn = false
@@ -283,9 +289,22 @@ fun SettingsScreen(
                         } else {
                             WakeWordService.setEnabled(context, true)
                             WakeWordService.start(context)
-                            requestWakeBatteryExemption(context)
+                            requestWakePermissions(context)
                             showWakeGuide = true
                         }
+                    },
+                    showDivider = true,
+                )
+                // [T-orion-custom-wake] The phrase is editable; saving it
+                // restarts the service so the Vosk grammar is rebuilt.
+                SettingsItem(
+                    icon = Icons.Outlined.RecordVoiceOver,
+                    iconColor = Color(0xFF6C5CE7),
+                    title = stringResource(R.string.orion_wake_phrase_title),
+                    subtitle = stringResource(R.string.orion_wake_phrase_subtitle, wakePhrase),
+                    onClick = {
+                        phraseDraft = wakePhrase
+                        showPhraseDialog = true
                     },
                     showDivider = false,
                 )
@@ -597,6 +616,62 @@ fun SettingsScreen(
             },
         )
     }
+    if (showPhraseDialog) {
+        AlertDialog(
+            onDismissRequest = { showPhraseDialog = false },
+            title = { Text(stringResource(R.string.orion_wake_phrase_title)) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.orion_wake_phrase_dialog_body))
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = phraseDraft,
+                        onValueChange = { phraseDraft = it.take(48) },
+                        singleLine = true,
+                        placeholder = { Text(WakeWordService.DEFAULT_PHRASE) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = phraseDraft.trim().length >= 3,
+                    onClick = {
+                        WakeWordService.setPhrase(context, phraseDraft)
+                        wakePhrase = WakeWordService.getPhrase(context)
+                        showPhraseDialog = false
+                        if (WakeWordService.isEnabled(context)) {
+                            WakeWordService.restart(context)
+                        }
+                    },
+                ) {
+                    Text(stringResource(R.string.orion_wake_phrase_save))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPhraseDialog = false }) {
+                    Text(stringResource(R.string.orion_wake_phrase_cancel))
+                }
+            },
+        )
+    }
+}
+
+/**
+ * [T-orion-wake-panel] The floating answer to the wake phrase is an overlay,
+ * so it needs `SYSTEM_ALERT_WINDOW`. Ask for that first; only when it is
+ * already granted spend the second system dialog on battery optimisation
+ * (without it the ROM kills the mic service after a few minutes).
+ */
+private fun requestWakePermissions(context: android.content.Context) {
+    if (!android.provider.Settings.canDrawOverlays(context)) {
+        val intent = Intent(
+            android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+            android.net.Uri.parse("package:${context.packageName}"),
+        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (runCatching { context.startActivity(intent) }.isSuccess) return
+    }
+    requestWakeBatteryExemption(context)
 }
 
 /**
