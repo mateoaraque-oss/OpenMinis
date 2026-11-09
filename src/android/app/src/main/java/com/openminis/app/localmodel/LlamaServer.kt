@@ -53,7 +53,11 @@ sealed interface LocalServerStatus {
  * is fixed: one slot, no GPU offload, loopback only.
  */
 data class LocalModelConfig(
-    val contextSize: Int = 4096,
+    // [T-orion-local-chat] 8192 instead of 4096: the compact local prompt plus
+    // a growing conversation needs headroom, and llama-server rejects (HTTP
+    // 400) any request that does not fit rather than trimming it. 8k costs
+    // ~200 MB of KV cache on a 1.5B model, which an 8 GB phone can carry.
+    val contextSize: Int = 8192,
     val threads: Int = 4,
     /** Off by default: mmap over Android's FUSE `/sdcard` is slow and, on some
      *  ROMs, outright fails. Reading the weights into anonymous memory is
@@ -98,6 +102,7 @@ object LlamaServer {
     private const val PREFS = "orion_local_model"
     private const val KEY_LAST_PATH = "last_path"
     private const val KEY_CTX = "ctx"
+    private const val KEY_CTX_MIGRATED = "ctx_8k_migrated"
     private const val KEY_THREADS = "threads"
     private const val KEY_MMAP = "mmap"
     private const val KEY_AUTO_START = "auto_start"
@@ -147,11 +152,28 @@ object LlamaServer {
         return LocalModelLaunch(
             model = model,
             config = LocalModelConfig(
-                contextSize = prefs.getInt(KEY_CTX, 4096),
+                contextSize = migratedContext(prefs),
                 threads = prefs.getInt(KEY_THREADS, 4),
                 useMmap = prefs.getBoolean(KEY_MMAP, false),
             ),
         )
+    }
+
+    /**
+     * [T-orion-local-chat] The old default context was 4096, which the full
+     * agent prompt did not fit into. Anyone who launched a model before this
+     * build has that value stored, so raise it once instead of leaving them
+     * on a window that is known to be too small.
+     */
+    private fun migratedContext(prefs: android.content.SharedPreferences): Int {
+        val stored = prefs.getInt(KEY_CTX, 8192)
+        if (prefs.getBoolean(KEY_CTX_MIGRATED, false)) return stored
+        val upgraded = if (stored < 8192) 8192 else stored
+        prefs.edit()
+            .putInt(KEY_CTX, upgraded)
+            .putBoolean(KEY_CTX_MIGRATED, true)
+            .apply()
+        return upgraded
     }
 
     fun autoStartEnabled(context: Context): Boolean =

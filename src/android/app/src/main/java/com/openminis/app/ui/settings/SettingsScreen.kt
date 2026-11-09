@@ -50,6 +50,9 @@ import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.Terminal
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -57,6 +60,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -132,6 +136,24 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     var showFeedbackSheet by remember { mutableStateOf(false) }
+    // [T-orion-assistant-guide] Granting the role is only half the job: the
+    // user then has to know WHERE to invoke Orion from. Google's own assistant
+    // flow shows this once after the grant, so mirror it instead of leaving a
+    // toast that disappears before it is read.
+    var showAssistantGuide by remember { mutableStateOf(false) }
+    val assistantRoleLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        // The role dialog closes either way; only claim success when the role
+        // is actually held (the default-apps fallback never returns RESULT_OK).
+        val held = runCatching {
+            context.getSystemService(RoleManager::class.java)
+                ?.isRoleHeld(RoleManager.ROLE_ASSISTANT) == true
+        }.getOrDefault(false)
+        if (held || result.resultCode == android.app.Activity.RESULT_OK) {
+            showAssistantGuide = true
+        }
+    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -172,20 +194,18 @@ fun SettingsScreen(
                             val rm = context.getSystemService(RoleManager::class.java)
                             if (rm != null && rm.isRoleAvailable(RoleManager.ROLE_ASSISTANT)) {
                                 if (rm.isRoleHeld(RoleManager.ROLE_ASSISTANT)) {
-                                    android.widget.Toast.makeText(
-                                        context,
-                                        context.getString(R.string.orion_assistant_active),
-                                        android.widget.Toast.LENGTH_SHORT,
-                                    ).show()
+                                    // Already the assistant: repeat the how-to
+                                    // instead of a toast that says nothing.
+                                    showAssistantGuide = true
                                 } else {
-                                    context.startActivity(
+                                    assistantRoleLauncher.launch(
                                         rm.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT),
                                     )
                                 }
                             } else {
                                 // ROM without the assistant role: the default-apps
                                 // page still lets the user pick Orion as assistant.
-                                context.startActivity(
+                                assistantRoleLauncher.launch(
                                     Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
                                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                                 )
@@ -503,6 +523,18 @@ fun SettingsScreen(
                 )
             }
         }
+    }
+    if (showAssistantGuide) {
+        AlertDialog(
+            onDismissRequest = { showAssistantGuide = false },
+            title = { Text(stringResource(R.string.orion_assistant_guide_title)) },
+            text = { Text(stringResource(R.string.orion_assistant_guide_body)) },
+            confirmButton = {
+                TextButton(onClick = { showAssistantGuide = false }) {
+                    Text(stringResource(R.string.orion_assistant_guide_ok))
+                }
+            },
+        )
     }
 }
 

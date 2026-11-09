@@ -58,6 +58,11 @@ object ContextOverflowGuard {
         "input exceeds the context",
         // Anthropic: "input length and `max_tokens` exceed context limit: A + B > W".
         "exceed context limit",
+        // [T-orion-local-chat] llama-server (the bundled on-device engine):
+        // "request (6609 tokens) exceeds the available context size (4096
+        // tokens), try increasing it", `type: exceed_context_size_error`.
+        "exceeds the available context size",
+        "exceed_context_size_error",
         "上下文长度",
         "超出最大长度",
         "内容过长",

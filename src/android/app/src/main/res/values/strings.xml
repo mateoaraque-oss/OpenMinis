@@ -2740,6 +2740,9 @@
     <string name="orion_become_assistant">Become your phone&#8217;s assistant</string>
     <string name="orion_become_assistant_subtitle">Hold the home button to talk to Orion</string>
     <string name="orion_assistant_active">Orion is now your assistant</string>
+    <string name="orion_assistant_guide_title">Orion is your assistant</string>
+    <string name="orion_assistant_guide_body">To call Orion:\n\n&#8226; Hold the home button (or the power button, on phones that route it to the assistant).\n&#8226; Or use the phone&#8217;s voice shortcut, such as &#8220;Hey Google&#8221; on Pixel devices.\n&#8226; Orion opens as a chat: ask for what you need and it replies on top of whatever is on screen.\n\nIf holding the home button opens something else, go to Settings &#8250; Apps &#8250; Default apps &#8250; Digital assistant and pick Orion. To let Orion read the screen and tap for you, turn on &#8220;Screen control and actions&#8221;.</string>
+    <string name="orion_assistant_guide_ok">Got it</string>
     <string name="orion_accessibility">Screen control and actions</string>
     <string name="orion_accessibility_subtitle">Let Orion see the screen and tap for you</string>
     <!-- [T-orion-presence] Live state labels under the chat top bar. -->
@@ -2775,6 +2778,7 @@
     <string name="orion_local_autostart_loading">Loading your model on this phone&#8230;</string>
     <string name="orion_local_log">Show engine log</string>
     <string name="orion_local_size_hint">1&#8211;3B Q4 models run best on 8 GB of RAM.</string>
+    <string name="orion_local_chat_only_hint">On the phone Orion answers in text. Screen control and the other tools need a cloud model.</string>
 
     <!-- [T-orion-model-catalog] Recommended model download. -->
     <string name="orion_models_empty_title">No model on this phone yet</string>

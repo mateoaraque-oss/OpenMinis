@@ -38,7 +38,7 @@ object LocalModelProvider {
         port: Int,
         modelId: String,
         displayName: String,
-        contextWindow: Int = 4096,
+        contextWindow: Int = 8192,
     ): ModelEntry? {
         // The initial config load is async. Reading repo.instances before it
         // finishes would see an empty list and create a duplicate provider on
@@ -82,7 +82,11 @@ object LocalModelProvider {
                         displayName = displayName,
                         provider = LABEL,
                         contextWindow = contextWindow,
-                        maxOutputTokens = 2048,
+                        // [T-orion-local-chat] A phone model that writes more
+                        // than ~1000 tokens per reply is unusable anyway, and
+                        // the smaller cap leaves the rest of the window for
+                        // the conversation instead of truncating the prompt.
+                        maxOutputTokens = 1024,
                         supportsReasoning = false,
                     ),
                     // Custom so a later /v1/models refresh carries this entry
@@ -95,6 +99,19 @@ object LocalModelProvider {
             // "{instanceId}/{modelId}" on save, so the id of the object we
             // just built is already stale and would never match
             // lastUsedVisibleEntry().
+            entry = repo.entriesFor(instance.id)
+                .firstOrNull { it.baseModel.id == modelId && !it.isHidden }
+        }
+
+        // [T-orion-local-chat] Keep the entry's window in step with the engine
+        // that was actually launched. An entry created by an older build still
+        // advertises the 4096 window, and the chat budgets every request
+        // against that number, so it would keep overflow-guarding for a limit
+        // the engine no longer has.
+        if (entry != null && entry.baseModel.contextWindow != contextWindow) {
+            repo.updateEntry(
+                entry.copy(baseModel = entry.baseModel.copy(contextWindow = contextWindow)),
+            )
             entry = repo.entriesFor(instance.id)
                 .firstOrNull { it.baseModel.id == modelId && !it.isHidden }
         }

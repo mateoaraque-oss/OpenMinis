@@ -693,6 +693,22 @@ class OpenAIProvider private constructor(
     private val isOpenRouter: Boolean = basePath.contains("openrouter.ai")
 
     /**
+     * [T-orion-local-chat] The request targets an engine on loopback (the
+     * bundled llama-server, or any local OpenAI-compatible server the user
+     * configured).
+     *
+     * Those servers implement the `max_tokens` field only: llama-server
+     * silently ignores `max_completion_tokens`, so without this the reply had
+     * no output cap at all and the model would happily generate until it ran
+     * out of context. Sending the field it understands keeps a local turn
+     * bounded.
+     */
+    private val isLoopbackEndpoint: Boolean = runCatching {
+        val host = basePath.toHttpUrlOrNull()?.host ?: return@runCatching false
+        host == "127.0.0.1" || host == "::1" || host.equals("localhost", ignoreCase = true)
+    }.getOrDefault(false)
+
+    /**
      * [T-kimi-native-tool-id] The request goes to a Kimi model: Moonshot's
      * own endpoint, or a Kimi model id on any OpenAI-compatible host (K2 on
      * OpenRouter, Groq, ...). Read per request: the model can change.
@@ -2353,7 +2369,9 @@ class OpenAIProvider private constructor(
         val supportsImages = model.hasImageInput
         val body = JSONObject()
         body.put("model", model.id)
-        if (isOpenRouter) {
+        if (isOpenRouter || isLoopbackEndpoint) {
+            // [T-orion-local-chat] Loopback engines (llama-server) only read
+            // `max_tokens`; `max_completion_tokens` is ignored silently.
             body.put("max_tokens", maxTokens)
         } else {
             body.put("max_completion_tokens", maxTokens)

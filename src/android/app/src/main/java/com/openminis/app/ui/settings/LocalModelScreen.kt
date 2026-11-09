@@ -108,7 +108,7 @@ fun LocalModelScreen(
     val prefs = remember {
         context.getSharedPreferences("orion_local_model", android.content.Context.MODE_PRIVATE)
     }
-    var contextSize by remember { mutableIntStateOf(prefs.getInt("ctx", 4096)) }
+    var contextSize by remember { mutableIntStateOf(prefs.getInt("ctx", 8192)) }
     var threads by remember { mutableIntStateOf(prefs.getInt("threads", 4)) }
     var useMmap by remember { mutableStateOf(prefs.getBoolean("mmap", false)) }
     var autoStart by remember { mutableStateOf(prefs.getBoolean("auto_start", true)) }
@@ -437,6 +437,16 @@ fun LocalModelScreen(
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 10.dp, bottom = 6.dp),
+            )
+
+            // [T-orion-local-chat] On-device turns run without the agent tool
+            // loop (see LocalChatMode); say so where the model is started
+            // instead of letting the user discover it mid-request.
+            Text(
+                text = stringResource(R.string.orion_local_chat_only_hint),
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 6.dp),
             )
 
             if (status is LocalServerStatus.Failed) {
@@ -817,7 +827,7 @@ private fun AdvancedCard(
             Spacer(Modifier.height(10.dp))
             Text(stringResource(R.string.orion_local_context), fontSize = 12.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(2048, 4096, 8192).forEach { value ->
+                listOf(4096, 8192, 16384).forEach { value ->
                     FilterChip(
                         selected = contextSize == value,
                         onClick = { if (enabled) onContextChange(value) },

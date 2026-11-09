@@ -2014,6 +2014,9 @@
     <string name="orion_become_assistant">Ser el asistente del teléfono</string>
     <string name="orion_become_assistant_subtitle">Mantén pulsado inicio para hablar con Orion</string>
     <string name="orion_assistant_active">Orion ya es tu asistente</string>
+    <string name="orion_assistant_guide_title">Orion ya es tu asistente</string>
+    <string name="orion_assistant_guide_body">Para invocarlo:\n\n&#8226; Mant&#233;n pulsado el bot&#243;n de inicio (o el bot&#243;n lateral, en tel&#233;fonos que lo env&#237;an al asistente).\n&#8226; O usa el atajo de voz del tel&#233;fono, como &#171;Hey Google&#187; en los Pixel.\n&#8226; Orion se abre como un chat: p&#237;dele lo que necesitas y responde encima de lo que tengas en pantalla.\n\nSi al mantener pulsado inicio se abre otra app, entra en Ajustes &#8250; Aplicaciones &#8250; Aplicaciones predeterminadas &#8250; Asistente digital y elige Orion. Para que Orion pueda leer la pantalla y pulsar por ti, activa &#171;Control de pantalla y acciones&#187;.</string>
+    <string name="orion_assistant_guide_ok">Entendido</string>
     <string name="orion_accessibility">Control de pantalla y acciones</string>
     <string name="orion_accessibility_subtitle">Permite a Orion ver la pantalla y tocar por ti</string>
 
@@ -2045,6 +2048,7 @@
     <string name="orion_local_autostart_loading">Cargando tu modelo en este teléfono&#8230;</string>
     <string name="orion_local_log">Ver registro del motor</string>
     <string name="orion_local_size_hint">Los modelos de 1 a 3B en Q4 van mejor con 8 GB de RAM.</string>
+    <string name="orion_local_chat_only_hint">En el tel&#233;fono Orion responde en texto. El control de pantalla y las dem&#225;s herramientas necesitan un modelo en la nube.</string>
 
     <!-- [T-orion-model-catalog] Descarga del modelo recomendado. -->
     <string name="orion_models_empty_title">Aún no hay ningún modelo en este teléfono</string>

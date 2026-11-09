@@ -2431,6 +2431,22 @@ class ChatViewModel(
     private var currentModel: LLMModel? = null
 
     /**
+     * [T-orion-local-chat] True when the selected entry is the bundled
+     * on-device engine ([com.openminis.app.localmodel.LocalModelProvider]).
+     *
+     * On-device models get a compact system prompt and no tool schemas: the
+     * full agent prompt plus twelve tool definitions is several times the
+     * context window the engine is started with, and llama-server answers
+     * `400 exceed_context_size_error` instead of replying. It is also minutes
+     * of prompt prefill on a phone CPU. See [LocalChatMode].
+     */
+    private val isLocalModelSelected: Boolean
+        get() = currentModel?.provider.equals(
+            com.openminis.app.localmodel.LocalModelProvider.LABEL,
+            ignoreCase = true,
+        )
+
+    /**
      * Does the CURRENTLY RESOLVED main model natively consume image pixels?
      *
      * Single source of truth for the three decisions that must agree: whether
@@ -2497,7 +2513,12 @@ class ChatViewModel(
      * fixed list of definition objects, no I/O.
      */
     private val agentTools: List<AgentToolDefinition>
-        get() = AgentTools.makeAgentTools(
+        get() = if (isLocalModelSelected) {
+            // [T-orion-local-chat] See [isLocalModelSelected]: the tool schemas
+            // alone would overflow the phone engine's context before the first
+            // message.
+            emptyList()
+        } else AgentTools.makeAgentTools(
             // [T-android-vision-group / GH#182] The main model's own vision
             // capability. When false but a Vision Group is configured, read_image
             // is still exposed and routes through the group (see
@@ -11900,6 +11921,15 @@ class ChatViewModel(
                         // the provider, never to agentHistory. Not on the
                         // tool-less wrap-up turn, which is ending anyway.
                         var requestMessages = requestContext.messages
+                        // [T-orion-local-chat] The phone engine 400s on a
+                        // request that does not fit instead of trimming it, so
+                        // keep only the newest turns that do.
+                        if (isLocalModelSelected) {
+                            requestMessages = com.openminis.app.localmodel.LocalChatMode.trimToFit(
+                                requestMessages,
+                                currentModel?.contextWindow,
+                            )
+                        }
                         if (!helperWrapUpInjected) {
                             val reminder = callbackReminder ?: QueuedCallbackReminder.plan(_promptQueue.value)
                             val withReminder = reminder?.let { QueuedCallbackReminder.inject(requestMessages, it.text) }
@@ -16252,6 +16282,13 @@ class ChatViewModel(
         }
 
     private fun buildSystemPrompt(): String? {
+        // [T-orion-local-chat] The phone engine gets a short identity prompt
+        // instead of the agent prompt: see [isLocalModelSelected]. Without
+        // this, a local chat never answered at all (the prompt did not fit
+        // the engine's context and llama-server returned 400).
+        if (isLocalModelSelected) {
+            return com.openminis.app.localmodel.LocalChatMode.systemPrompt(context)
+        }
         // Cache-friendly layout: keep `base` byte-stable by stripping out anything
         // that varies per request, then append a "Runtime context" suffix at the
         // very end with all the dynamic bits (date, timezone, locale, configured
