@@ -100,6 +100,14 @@ object LocalChatMode {
             if (body.isNotEmpty()) {
                 append("\n\nPersonality: ").append(body)
             }
+            // [T-orion-local-language] Last, so it survives the tool round: the
+            // small models tested (Qwen3 4B, LFM 1.7B) answer in English after
+            // a tool returns English JSON, even though the rule above already
+            // asked for the user's language. Restating it at the end of the
+            // prompt keeps the reply in Spanish for a Spanish message.
+            append("\n\nLanguage rule, always: write the entire reply in the same language as the user's ")
+            append("most recent message. Tool output in English does not change the reply language. ")
+            append("If the user wrote in Spanish, the reply must be in Spanish.")
         }
     }
 
