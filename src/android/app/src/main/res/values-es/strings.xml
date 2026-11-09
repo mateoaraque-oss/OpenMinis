@@ -2017,6 +2017,16 @@
     <string name="orion_assistant_guide_title">Orion ya es tu asistente</string>
     <string name="orion_assistant_guide_body">Para invocarlo:\n\n&#8226; Mant&#233;n pulsado el bot&#243;n de inicio (o el bot&#243;n lateral, en tel&#233;fonos que lo env&#237;an al asistente).\n&#8226; O usa el atajo de voz del tel&#233;fono, como &#171;Hey Google&#187; en los Pixel.\n&#8226; Orion se abre como un chat: p&#237;dele lo que necesitas y responde encima de lo que tengas en pantalla.\n\nSi al mantener pulsado inicio se abre otra app, entra en Ajustes &#8250; Aplicaciones &#8250; Aplicaciones predeterminadas &#8250; Asistente digital y elige Orion. Para que Orion pueda leer la pantalla y pulsar por ti, activa &#171;Control de pantalla y acciones&#187;.</string>
     <string name="orion_assistant_guide_ok">Entendido</string>
+
+    <!-- [T-orion-wake-word] Palabra de activación en el propio teléfono. -->
+    <string name="orion_wake_word">Palabra de activación</string>
+    <string name="orion_wake_word_subtitle">Di «Hey Jarvis» con la pantalla apagada</string>
+    <string name="orion_wake_word_mic_denied">Orion necesita el micrófono para la palabra de activación.</string>
+    <string name="orion_wake_word_channel">Palabra de activación</string>
+    <string name="orion_wake_word_notification_title">Escuchando «Hey Jarvis»</string>
+    <string name="orion_wake_word_notification_body">Toca para abrir Orion. El micrófono se apaga mientras Orion está en pantalla.</string>
+    <string name="orion_wake_word_guide_title">«Hey Jarvis» está activo</string>
+    <string name="orion_wake_word_guide_body">Di «Hey Jarvis» desde cualquier app, incluso con la pantalla apagada, y Orion se abre en modo voz.\n\n• El micrófono queda encendido: cuenta con un 2–4 % de batería por hora y una notificación fija. El audio no sale del teléfono.\n• Deja Orion fuera de la optimización de batería (Ajustes › Batería) o Android dejará de escuchar a los pocos minutos.\n• Tras reiniciar, abre Orion una vez: Android 15 no permite abrir el micrófono al arrancar.\n• Apaga este interruptor para dejar de escuchar.</string>
     <string name="orion_accessibility">Control de pantalla y acciones</string>
     <string name="orion_accessibility_subtitle">Permite a Orion ver la pantalla y tocar por ti</string>
 

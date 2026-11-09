@@ -199,6 +199,21 @@ jobs:
           path: ~/.android
           key: android-debug-keystore-v1
 
+      # [T-orion-wake-word] openWakeWord models (Apache-2.0 code, models
+      # CC BY-NC-SA 4.0). 3.7 MB total, fetched from the upstream v0.5.1
+      # release instead of committing binaries. The detector refuses to start
+      # with a clear log line if these are missing, so a network hiccup here
+      # cannot produce a silently deaf build.
+      - name: Fetch wake-word models
+        run: |
+          DEST=src/android/app/src/main/assets/wakeword
+          mkdir -p "$DEST"
+          BASE=https://github.com/dscripka/openWakeWord/releases/download/v0.5.1
+          for f in melspectrogram.tflite embedding_model.tflite hey_jarvis_v0.1.tflite; do
+            curl -fsSL --retry 3 "$BASE/$f" -o "$DEST/$f"
+          done
+          ls -lh "$DEST"
+
       - name: Assemble debug APK
         working-directory: src/android
         run: |

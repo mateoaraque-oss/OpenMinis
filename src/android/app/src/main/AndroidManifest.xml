@@ -25,6 +25,14 @@
          the agent service (moved to mediaPlayback over the 6h/24h cap), a
          backup is finite, and the service handles onTimeout by stopping. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- [T-orion-wake-word] WakeWordService keeps the microphone open to run
+         the on-device "Hey Jarvis" detector. Android 14+ requires the typed
+         permission and a foregroundServiceType="microphone" declaration; the
+         mic is released whenever Orion itself is on screen. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- Only used to ask for the exemption that keeps the wake-word service
+         alive when the screen is off; without it Doze stops the listener. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- T50: PARTIAL_WAKE_LOCK held by AgentForegroundService while sessions
          are streaming so Doze + OEM CPU throttling don't stall long shell
          tools after screen-off. -->
@@ -548,6 +556,14 @@
             android:name=".service.OAuthWaitService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- [T-orion-wake-word] On-device wake word ("Hey Jarvis"). The mic
+             stays open only while Orion is in the background; the service
+             releases it as soon as the app is on screen. -->
+        <service
+            android:name=".wakeword.WakeWordService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
 
         <!-- Alarm broadcast receiver (also handles BOOT_COMPLETED and
              MY_PACKAGE_REPLACED for re-scheduling). [T-android-alarm-reschedule-on-restart]

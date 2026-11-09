@@ -36,8 +36,8 @@ android {
         applicationId = "com.openminis.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 44
-        versionName = "1.22"
+        versionCode = 45
+        versionName = "1.23"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -435,6 +435,12 @@ dependencies {
     // native .so payloads for ONNX Runtime and the APM — see the abiFilters
     // note in `ndk`; we ship arm64-v8a only.
     implementation("com.github.helloooideeeeea:RealTimeCutVADLibraryForAndroid:1.0.5@aar")
+
+    // [T-orion-wake-word] TFLite, not ONNX Runtime: this APK already ships
+    // libonnxruntime.so from the VAD library above, and a second copy with a
+    // different version can break that JNI wrapper. TFLite adds one uniquely
+    // named .so and the three openWakeWord models are ~3.7 MB in assets.
+    implementation("org.tensorflow:tensorflow-lite:2.17.0")
 
     // rclone, via its official gomobile binding, for backup destinations
     // (SMB / WebDAV / SFTP / S3 / FTP). Build it with

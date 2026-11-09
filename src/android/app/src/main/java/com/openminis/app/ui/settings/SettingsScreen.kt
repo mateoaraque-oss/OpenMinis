@@ -46,6 +46,7 @@ import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Handyman
 import androidx.compose.material.icons.outlined.Psychology
+import androidx.compose.material.icons.outlined.RecordVoiceOver
 import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Shield
@@ -84,6 +85,7 @@ import com.openminis.app.BuildConfig
 import com.openminis.app.R
 import com.openminis.app.ui.components.openExternalUrl
 import com.openminis.app.i18n.uppercaseForDisplay
+import com.openminis.app.wakeword.WakeWordService
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -141,6 +143,27 @@ fun SettingsScreen(
     // flow shows this once after the grant, so mirror it instead of leaving a
     // toast that disappears before it is read.
     var showAssistantGuide by remember { mutableStateOf(false) }
+    // [T-orion-wake-word] Toggle state is read from the same prefs the service
+    // uses, so the row is truthful after a restart or a battery-optimisation
+    // eviction.
+    var wakeWordOn by remember { mutableStateOf(WakeWordService.isEnabled(context)) }
+    var showWakeGuide by remember { mutableStateOf(false) }
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) {
+            WakeWordService.setEnabled(context, true)
+            wakeWordOn = true
+            WakeWordService.start(context)
+            requestWakeBatteryExemption(context)
+            showWakeGuide = true
+        } else {
+            wakeWordOn = false
+            android.widget.Toast
+                .makeText(context, R.string.orion_wake_word_mic_denied, android.widget.Toast.LENGTH_LONG)
+                .show()
+        }
+    }
     val assistantRoleLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
@@ -238,6 +261,32 @@ fun SettingsScreen(
                     title = stringResource(R.string.orion_local_model),
                     subtitle = stringResource(R.string.orion_local_model_subtitle),
                     onClick = onLocalModelClick,
+                    showDivider = false,
+                )
+                // [T-orion-wake-word] Real wake word, not the system hotword:
+                // an always-on foreground service with a 4 MB on-device model.
+                SettingsSwitchRow(
+                    icon = Icons.Outlined.RecordVoiceOver,
+                    iconColor = Color(0xFFE17055),
+                    title = stringResource(R.string.orion_wake_word),
+                    subtitle = stringResource(R.string.orion_wake_word_subtitle),
+                    checked = wakeWordOn,
+                    onCheckedChange = { on ->
+                        wakeWordOn = on
+                        if (!on) {
+                            WakeWordService.setEnabled(context, false)
+                            WakeWordService.stop(context)
+                            return@SettingsSwitchRow
+                        }
+                        if (!WakeWordService.hasMic(context)) {
+                            micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                        } else {
+                            WakeWordService.setEnabled(context, true)
+                            WakeWordService.start(context)
+                            requestWakeBatteryExemption(context)
+                            showWakeGuide = true
+                        }
+                    },
                     showDivider = false,
                 )
             }
@@ -536,6 +585,32 @@ fun SettingsScreen(
             },
         )
     }
+    if (showWakeGuide) {
+        AlertDialog(
+            onDismissRequest = { showWakeGuide = false },
+            title = { Text(stringResource(R.string.orion_wake_word_guide_title)) },
+            text = { Text(stringResource(R.string.orion_wake_word_guide_body)) },
+            confirmButton = {
+                TextButton(onClick = { showWakeGuide = false }) {
+                    Text(stringResource(R.string.orion_assistant_guide_ok))
+                }
+            },
+        )
+    }
+}
+
+/**
+ * [T-orion-wake-word] A mic foreground service survives Doze only when the app
+ * is on the battery-optimisation allowlist. Ask once, with the system dialog;
+ * if the ROM hides it (some ZTE builds do) the user can still do it by hand in
+ * Settings › Battery, which the guide dialog explains.
+ */
+private fun requestWakeBatteryExemption(context: android.content.Context) {
+    if (WakeWordService.isIgnoringBatteryOptimizations(context)) return
+    val intent = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+        .setData(android.net.Uri.parse("package:${context.packageName}"))
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    runCatching { context.startActivity(intent) }
 }
 
 @Composable

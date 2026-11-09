@@ -525,6 +525,11 @@ class MainActivity : ComponentActivity() {
             // user visits Settings.
             com.openminis.app.localmodel.LocalModelBoot.onAppLaunch(this)
         }
+        // [T-orion-wake-word] Android 15 forbids opening the microphone from a
+        // boot receiver, so the listener is (re)armed here, while the app is
+        // visibly in the foreground. Starting an already-running service is a
+        // no-op.
+        com.openminis.app.wakeword.WakeWordService.startIfEnabled(this)
         val explicitDeepLink = if (isAssistInvocation) {
             DeepLinkAction.NewVoiceChat
         } else {
