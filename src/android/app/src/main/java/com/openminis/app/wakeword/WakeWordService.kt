@@ -45,7 +45,6 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import kotlin.math.maxOf
 
 /**
  * [T-orion-wake-word] Always-listening wake phrase foreground service.
@@ -373,7 +372,7 @@ class WakeWordService : Service(), LifecycleEventObserver {
                         .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
                         .build(),
                 )
-                .setBufferSizeInBytes(maxOf(min, 1_280 * 2 * 8))
+                .setBufferSizeInBytes(if (min > 1_280 * 2 * 8) min else 1_280 * 2 * 8)
                 .build()
         } catch (t: Throwable) {
             Log.w(TAG, "AudioRecord unavailable: ${t.message}")

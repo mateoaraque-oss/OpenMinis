@@ -463,8 +463,8 @@ dependencies {
     // Kaldi/OpenFST JNI libraries and needs JNA; the Spanish acoustic model
     // itself is an asset (added by CI) and is decoded with a grammar limited
     // to the user's phrase. Vosk is Apache-2.0 and fully offline.
-    implementation("com.alphacephei:vosk-android:0.3.47@aar")
-    implementation("net.java.dev.jna:jna:5.13.0@aar")
+    implementation("com.alphacephei:vosk-android:0.3.47")
+    implementation("net.java.dev.jna:jna:5.13.0")
 
     // rclone, via its official gomobile binding, for backup destinations
     // (SMB / WebDAV / SFTP / S3 / FTP). Build it with
