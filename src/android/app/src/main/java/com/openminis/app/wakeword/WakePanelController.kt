@@ -72,7 +72,7 @@ class WakePanelController(private val context: Context) {
             setPadding(dp(14), dp(10), dp(10), dp(10))
             background = GradientDrawable().apply {
                 orientation = GradientDrawable.Orientation.TL_BR
-                colors = intArrayOf(0xF2081117.toInt(), 0xF20B1B26.toInt())
+                setColors(intArrayOf(0xF2081117.toInt(), 0xF20B1B26.toInt()))
                 cornerRadius = dp(22).toFloat()
                 setStroke(dp(1), 0x553FD4FF)
             }
