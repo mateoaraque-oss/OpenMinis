@@ -11,8 +11,10 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.media.ToneGenerator
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -34,6 +36,7 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import com.openminis.app.MainActivity
 import com.openminis.app.R
 import com.openminis.app.deeplink.DeepLinkCoordinator
+import com.openminis.app.speech.VoiceOutputState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -90,6 +93,7 @@ class WakeWordService : Service(), LifecycleEventObserver {
         private const val PREFS = "orion_wake_word"
         private const val KEY_ENABLED = "enabled"
         private const val KEY_PHRASE = "phrase"
+        private const val KEY_VOICE_REPLIES = "voice_replies"
 
         const val DEFAULT_PHRASE = "oye orión"
 
@@ -121,6 +125,21 @@ class WakeWordService : Service(), LifecycleEventObserver {
             val clean = phrase.trim().replace(Regex("\\s+"), " ")
             context.getSharedPreferences(PREFS, MODE_PRIVATE)
                 .edit().putString(KEY_PHRASE, clean.ifEmpty { DEFAULT_PHRASE }).apply()
+        }
+
+        /**
+         * Whether Orion should read its answers out loud after a wake-phrase
+         * invocation. Default true: the whole point of invoking by voice is a
+         * spoken answer. Users who prefer silent replies can turn it off in
+         * Settings, which leaves the app's own "Read replies" setting intact.
+         */
+        fun speaksReplies(context: Context): Boolean =
+            context.getSharedPreferences(PREFS, MODE_PRIVATE)
+                .getBoolean(KEY_VOICE_REPLIES, true)
+
+        fun setSpeaksReplies(context: Context, enabled: Boolean) {
+            context.getSharedPreferences(PREFS, MODE_PRIVATE)
+                .edit().putBoolean(KEY_VOICE_REPLIES, enabled).apply()
         }
 
         /** Stop and start the service so the detector picks up a new phrase. */
@@ -387,7 +406,27 @@ class WakeWordService : Service(), LifecycleEventObserver {
         lastTrigger = now
         Log.w(TAG, "wake phrase detected")
         paused = true
+        // Audible acknowledgement, JARVIS-style two-note chime. With the
+        // screen off the overlay is not visible, so this is the only way to
+        // tell the user the phrase landed.
+        playWakeChime()
         main.post { openWakePanel() }
+    }
+
+    /**
+     * Short acknowledgement tone. Kept separate from TTS: speaking a greeting
+     * into the microphone while the recognizer is starting would be decoded as
+     * the user's command. ToneGenerator runs on its own stream and is released
+     * right away.
+     */
+    private fun playWakeChime() {
+        try {
+            val tone = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 70)
+            tone.startTone(ToneGenerator.TONE_PROP_ACK, 160)
+            main.postDelayed({ runCatching { tone.release() } }, 600)
+        } catch (t: Throwable) {
+            Log.w(TAG, "wake chime unavailable: ${t.message}")
+        }
     }
 
     private fun openWakePanel() {
@@ -404,6 +443,7 @@ class WakeWordService : Service(), LifecycleEventObserver {
             getString(R.string.orion_wake_panel_title),
             getString(R.string.orion_wake_panel_hint),
         )
+        controller.setState(WakePanelController.State.LISTENING)
         startPanelSpeech()
         main.removeCallbacks(panelTimeout)
         main.postDelayed(panelTimeout, PANEL_TIMEOUT_MS)
@@ -422,14 +462,22 @@ class WakeWordService : Service(), LifecycleEventObserver {
         speech = recognizer
         recognizer.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {
+                panel?.setState(WakePanelController.State.LISTENING)
                 panel?.setStatus(getString(R.string.orion_wake_panel_listening))
             }
 
             override fun onBeginningOfSpeech() = Unit
-            override fun onRmsChanged(rmsdB: Float) = Unit
+
+            override fun onRmsChanged(rmsdB: Float) {
+                // rmsdB arrives roughly in [-2, 10]; map it to 0..1 for the
+                // waveform so quiet rooms still show a live, low bar.
+                panel?.setAmplitude(((rmsdB + 2f) / 12f).coerceIn(0f, 1f))
+            }
+
             override fun onBufferReceived(buffer: ByteArray?) = Unit
 
             override fun onEndOfSpeech() {
+                panel?.setState(WakePanelController.State.PROCESSING)
                 panel?.setStatus(getString(R.string.orion_wake_panel_processing))
             }
 
@@ -439,6 +487,7 @@ class WakeWordService : Service(), LifecycleEventObserver {
                 if (error == SpeechRecognizer.ERROR_NO_MATCH ||
                     error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
                 ) {
+                    panel?.setState(WakePanelController.State.ERROR)
                     panel?.setStatus(getString(R.string.orion_wake_panel_no_match))
                     main.postDelayed({ closePanel(resume = true) }, 900)
                 } else {
@@ -494,7 +543,7 @@ class WakeWordService : Service(), LifecycleEventObserver {
         }
     }
 
-    /** Transcript ready: open a fresh chat and let ChatScreen send it. */
+    /** Transcript ready: open a fresh voice chat and let ChatScreen send it. */
     private fun deliverPrompt(text: String) {
         val clean = text.trim()
         if (clean.isEmpty()) return
@@ -502,9 +551,20 @@ class WakeWordService : Service(), LifecycleEventObserver {
         main.removeCallbacks(panelTimeout)
         closePanel(resume = false)
         DeepLinkCoordinator.setPendingPrompt(clean)
+        // [T-orion-voice-first] Launch the VOICE chat entry point, not the
+        // plain one. MainActivity maps it to ChatAction.START_VOICE, which
+        // puts ChatScreen in voice mode; that is what enables the streaming
+        // read-aloud effect (its pill/effect only run while voice is active).
+        // Without this the answer was always text-only.
+        if (speaksReplies(this)) {
+            runCatching {
+                VoiceOutputState.init(this)
+                if (!VoiceOutputState.isMuted.value) VoiceOutputState.setEnabled(true)
+            }.onFailure { Log.w(TAG, "cannot enable read-replies: ${it.message}") }
+        }
         val intent = Intent(this, MainActivity::class.java)
             .setAction(Intent.ACTION_VIEW)
-            .setData(Uri.parse("minis://action/new_chat"))
+            .setData(Uri.parse("minis://action/voice_chat"))
             .addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK or
                     Intent.FLAG_ACTIVITY_SINGLE_TOP or

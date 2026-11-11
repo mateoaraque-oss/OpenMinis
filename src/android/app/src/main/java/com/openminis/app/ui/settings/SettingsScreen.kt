@@ -48,6 +48,7 @@ import androidx.compose.material.icons.outlined.Handyman
 import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.RecordVoiceOver
 import androidx.compose.material.icons.automirrored.outlined.Send
+import androidx.compose.material.icons.outlined.VolumeUp
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.Terminal
@@ -154,6 +155,8 @@ fun SettingsScreen(
     var wakePhrase by remember { mutableStateOf(WakeWordService.getPhrase(context)) }
     var showPhraseDialog by remember { mutableStateOf(false) }
     var phraseDraft by remember { mutableStateOf(wakePhrase) }
+    // [T-orion-voice-first] Wake invocations answer out loud by default.
+    var voiceRepliesOn by remember { mutableStateOf(WakeWordService.speaksReplies(context)) }
     val micPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
@@ -305,6 +308,19 @@ fun SettingsScreen(
                     onClick = {
                         phraseDraft = wakePhrase
                         showPhraseDialog = true
+                    },
+                    showDivider = true,
+                )
+                // [T-orion-voice-first] Spoken answers after a wake invocation.
+                SettingsSwitchRow(
+                    icon = Icons.Outlined.VolumeUp,
+                    iconColor = Color(0xFF3FD4FF),
+                    title = stringResource(R.string.orion_voice_replies_title),
+                    subtitle = stringResource(R.string.orion_voice_replies_subtitle),
+                    checked = voiceRepliesOn,
+                    onCheckedChange = { on ->
+                        voiceRepliesOn = on
+                        WakeWordService.setSpeaksReplies(context, on)
                     },
                     showDivider = false,
                 )

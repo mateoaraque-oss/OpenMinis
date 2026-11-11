@@ -2759,11 +2759,13 @@
     <string name="orion_wake_phrase_save">Save</string>
     <string name="orion_wake_phrase_cancel">Cancel</string>
     <string name="orion_wake_panel_title">Orion</string>
-    <string name="orion_wake_panel_hint">Say what you want…</string>
-    <string name="orion_wake_panel_listening">Listening…</string>
-    <string name="orion_wake_panel_processing">Processing…</string>
-    <string name="orion_wake_panel_heard">Got it</string>
-    <string name="orion_wake_panel_no_match">I didn’t catch that</string>
+    <string name="orion_wake_panel_hint">At your service, sir.</string>
+    <string name="orion_wake_panel_listening">Listening, sir.</string>
+    <string name="orion_wake_panel_processing">Working on it.</string>
+    <string name="orion_wake_panel_heard">Understood</string>
+    <string name="orion_wake_panel_no_match">I did not catch that, sir</string>
+    <string name="orion_voice_replies_title">Answer out loud</string>
+    <string name="orion_voice_replies_subtitle">Speak the reply after the wake phrase</string>
     <string name="orion_accessibility">Screen control and actions</string>
     <string name="orion_accessibility_subtitle">Let Orion see the screen and tap for you</string>
     <!-- [T-orion-presence] Live state labels under the chat top bar. -->
