@@ -390,13 +390,9 @@ androidComponents {
     }
 }
 
-// [T-orion-custom-wake] Vosk Android AAR is vendored here (downloaded by CI
-// into src/android/app/libs/) because the Maven-published vosk-android bundles
-// JNA twice and triggers duplicate-class errors. flatDir keeps it local and
-// conflict-free.
-repositories {
-    flatDir { dirs("libs") }
-}
+// NOTE: the flatDir repository for src/android/app/libs is declared once, in
+// src/android/settings.gradle.kts. Declaring it here too fails configuration
+// because that settings file sets RepositoriesMode.FAIL_ON_PROJECT_REPOS.
 
 dependencies {
     // Compose BOM
@@ -469,10 +465,16 @@ dependencies {
 
     // [T-orion-custom-wake] Vosk keyword spotting. Vendored as a local AAR
     // (downloaded by CI into app/libs/) because the Maven-published
-    // vosk-android:0.3.47 bundles JNA twice (aar + jar) and triggers
+    // vosk-android:0.3.47 POM pulls JNA twice (aar + jar) and triggers
     // duplicate-class errors at merge time. Vosk is Apache-2.0 and fully
-    // offline; JNA comes inside the AAR and must NOT be declared separately.
+    // offline.
+    //
+    // The AAR itself does NOT contain JNA, so it is declared explicitly here —
+    // once, pinned to the AAR variant, which is the Android build with
+    // libjnidispatch.so for arm64-v8a. Declaring it without @aar would pull the
+    // desktop jar and lose the native bridge Vosk needs.
     implementation(group = "", name = "vosk-android", ext = "aar")
+    implementation("net.java.dev.jna:jna:5.13.0@aar")
 
     // rclone, via its official gomobile binding, for backup destinations
     // (SMB / WebDAV / SFTP / S3 / FTP). Build it with

@@ -3,8 +3,8 @@ package com.openminis.app.wakeword
 import android.content.Context
 import android.content.res.AssetManager
 import android.util.Log
-import org.vosk.KaldiRecognizer
 import org.vosk.Model
+import org.vosk.Recognizer
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.FileOutputStream
@@ -131,10 +131,10 @@ class VoskWakeWord(
     }
 
     private val model: Model = Model(installDir(context).absolutePath)
-    private var recognizer: KaldiRecognizer = newRecognizer(phrase)
+    private var recognizer: Recognizer = newRecognizer(phrase)
     @Volatile private var closed = false
 
-    private fun newRecognizer(rawPhrase: String): KaldiRecognizer {
+    private fun newRecognizer(rawPhrase: String): Recognizer {
         // Build the grammar JSON by hand so we don't need the org.json jar in
         // the main source set (it's only a testImplementation dep). Escape the
         // phrase just in case the user typed quotes or backslashes.
@@ -142,10 +142,10 @@ class VoskWakeWord(
             .replace("\\", "\\\\").replace("\"", "\\\"")
         val grammar = "[\"$escaped\", \"[unk]\"]"
         return try {
-            KaldiRecognizer(model, SAMPLE_RATE.toFloat(), grammar)
+            Recognizer(model, SAMPLE_RATE.toFloat(), grammar)
         } catch (t: Throwable) {
             Log.w(TAG, "vosk grammar rejected (${t.message}), falling back to free decoding")
-            KaldiRecognizer(model, SAMPLE_RATE.toFloat())
+            Recognizer(model, SAMPLE_RATE.toFloat())
         }
     }
 
@@ -171,7 +171,7 @@ class VoskWakeWord(
         synchronized(this) {
             if (closed) return false
             return try {
-                if (recognizer.acceptWaveform(bytes, bytes.size)) {
+                if (recognizer.acceptWaveForm(bytes, bytes.size)) {
                     val text = jsonStringField(recognizer.result, "text")
                     if (matches(text)) {
                         recognizer.reset()

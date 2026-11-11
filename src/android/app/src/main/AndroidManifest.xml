@@ -30,8 +30,11 @@
          permission and a foregroundServiceType="microphone" declaration; the
          mic is released whenever Orion itself is on screen. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
-    <!-- Only used to ask for the exemption that keeps the wake-word service
-         alive when the screen is off; without it Doze stops the listener. -->
+    <!-- Used to ask for the exemption that keeps the wake-word service alive
+         when the screen is off (T-orion-wake-word), and to deep-link the user
+         to the system battery-optimisation dialog from Background settings
+         (T50); without it Doze stops the listener. Declared once: a duplicate
+         declaration makes the manifest merger emit a warning. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- T50: PARTIAL_WAKE_LOCK held by AgentForegroundService while sessions
          are streaming so Doze + OEM CPU throttling don't stall long shell
@@ -44,11 +47,6 @@
          on; the app silently falls back to the Phase 1 notification when
          the permission is missing. -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-    <!-- T50: deep-link the user to the system battery-optimisation
-         exemption dialog when they tap the Background settings row. The
-         permission only governs whether ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
-         can be issued without falling through to the broader settings list. -->
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- [T-android-dynamic-island] Android 16 (Baklava) Live Updates: lets the
          ongoing agent-status notification be promoted to the always-visible
