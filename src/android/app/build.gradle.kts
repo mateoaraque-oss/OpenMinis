@@ -459,12 +459,12 @@ dependencies {
     // named .so and the three openWakeWord models are ~3.7 MB in assets.
     implementation("org.tensorflow:tensorflow-lite:2.17.0")
 
-    // [T-orion-custom-wake] Vosk keyword spotting. The Java AAR carries the
-    // Kaldi/OpenFST JNI libraries and needs JNA; the Spanish acoustic model
-    // itself is an asset (added by CI) and is decoded with a grammar limited
-    // to the user's phrase. Vosk is Apache-2.0 and fully offline.
-    implementation("com.alphacephei:vosk-android:0.3.47")
-    implementation("net.java.dev.jna:jna:5.13.0")
+    // [T-orion-custom-wake] Vosk keyword spotting. Vendored as a local AAR
+    // (downloaded by CI into app/libs/) because the Maven-published
+    // vosk-android:0.3.47 bundles JNA twice (aar + jar) and triggers
+    // duplicate-class errors at merge time. Vosk is Apache-2.0 and fully
+    // offline; JNA comes inside the AAR and must NOT be declared separately.
+    implementation(group = "", name = "vosk-android", ext = "aar")
 
     // rclone, via its official gomobile binding, for backup destinations
     // (SMB / WebDAV / SFTP / S3 / FTP). Build it with

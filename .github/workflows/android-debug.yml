@@ -197,6 +197,18 @@ jobs:
           test -f "$DST/am/final.mdl"
           test -f "$DST/conf/model.conf"
 
+      - name: Bundle Vosk Android AAR
+        run: |
+          # [T-orion-custom-wake] Vendored Vosk AAR (Maven publish bundles JNA
+          # twice, causing duplicate-class errors). Download once and keep in
+          # app/libs/ alongside rclone.aar.
+          mkdir -p src/android/app/libs
+          curl -fL --retry 3 --retry-delay 5 \
+            -o src/android/app/libs/vosk-android.aar \
+            "https://repo1.maven.org/maven2/com/alphacephei/vosk-android/0.3.47/vosk-android-0.3.47.aar"
+          echo "--- vosk aar ---"
+          ls -lh src/android/app/libs/vosk-android.aar
+
       - name: Build rclone AAR
         run: |
           chmod +x deps/build_rclone_android.sh
