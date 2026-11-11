@@ -390,6 +390,14 @@ androidComponents {
     }
 }
 
+// [T-orion-custom-wake] Vosk Android AAR is vendored here (downloaded by CI
+// into src/android/app/libs/) because the Maven-published vosk-android bundles
+// JNA twice and triggers duplicate-class errors. flatDir keeps it local and
+// conflict-free.
+repositories {
+    flatDir { dirs("libs") }
+}
+
 dependencies {
     // Compose BOM
     val composeBom = platform("androidx.compose:compose-bom:2025.09.00")
