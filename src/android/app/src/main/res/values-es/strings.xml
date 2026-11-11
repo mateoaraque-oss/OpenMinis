@@ -2032,12 +2032,12 @@
     <string name="orion_wake_phrase_dialog_body">Escribe la frase que quieres decir. En español funciona mejor; dos o tres palabras evitan activaciones falsas.</string>
     <string name="orion_wake_phrase_save">Guardar</string>
     <string name="orion_wake_phrase_cancel">Cancelar</string>
-    <string name="orion_wake_panel_title">Orión</string>
-    <string name="orion_wake_panel_hint">A su servicio, señor.</string>
+    <string name="orion_wake_panel_title">Orión · Mk II</string>
+    <string name="orion_wake_panel_hint">Hable, señor. Le escucho.</string>
     <string name="orion_wake_panel_listening">Escuchando, señor.</string>
     <string name="orion_wake_panel_processing">Procesando, señor.</string>
-    <string name="orion_wake_panel_heard">Entendido</string>
-    <string name="orion_wake_panel_no_match">No le he entendido, señor</string>
+    <string name="orion_wake_panel_heard">Entendido, señor</string>
+    <string name="orion_wake_panel_no_match">No le he oído bien, señor</string>
     <string name="orion_voice_replies_title">Responder en voz alta</string>
     <string name="orion_voice_replies_subtitle">Lee la respuesta al invocarlo por voz</string>
     <string name="orion_accessibility">Control de pantalla y acciones</string>

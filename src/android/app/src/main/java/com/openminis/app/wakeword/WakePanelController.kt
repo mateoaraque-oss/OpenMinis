@@ -66,15 +66,16 @@ class WakePanelController(private val context: Context) {
         if (root != null || windowManager == null) return
 
         // Dark HUD card with a cyan hairline, the same visual language as the
-        // arc reactor: near-black navy, one accent colour, no chrome.
+        // JARVIS reference dashboard: near-black teal, one ice-cyan accent
+        // (#7EE8FF), thin borders, uppercase wide-tracked labels.
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(14), dp(10), dp(10), dp(10))
             background = GradientDrawable().apply {
                 orientation = GradientDrawable.Orientation.TL_BR
-                setColors(intArrayOf(0xF2081117.toInt(), 0xF20B1B26.toInt()))
-                cornerRadius = dp(22).toFloat()
-                setStroke(dp(1), 0x553FD4FF)
+                setColors(intArrayOf(0xF2000E14.toInt(), 0xF200161E.toInt()))
+                cornerRadius = dp(18).toFloat()
+                setStroke(dp(1), 0x597EE8FF)
             }
         }
 
@@ -91,22 +92,32 @@ class WakePanelController(private val context: Context) {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), 0, dp(8), 0)
         }
+        val statusRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        statusRow.addView(
+            PulseDotView(context),
+            LinearLayout.LayoutParams(dp(7), dp(7)).apply { rightMargin = dp(7) },
+        )
         statusView = TextView(context).apply {
             text = title.uppercase()
             setTextColor(ACCENT)
-            textSize = 12f
-            letterSpacing = 0.18f
+            textSize = 10.5f
+            letterSpacing = 0.32f
             setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD))
             maxLines = 1
         }
+        statusRow.addView(statusView)
         transcriptView = TextView(context).apply {
             text = hint
-            setTextColor(0xFFC7D6E3.toInt())
-            textSize = 13.5f
+            setTextColor(0xFFDCEBF7.toInt())
+            textSize = 13f
+            setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL))
             maxLines = 2
-            setPadding(0, dp(2), 0, 0)
+            setPadding(0, dp(3), 0, 0)
         }
-        texts.addView(statusView)
+        texts.addView(statusRow)
         texts.addView(transcriptView)
         row.addView(
             texts,
@@ -115,7 +126,7 @@ class WakePanelController(private val context: Context) {
 
         val close = TextView(context).apply {
             text = "\u2715"
-            setTextColor(0xFF8FA6B8.toInt())
+            setTextColor(0xB37EE8FF.toInt())
             textSize = 15f
             gravity = Gravity.CENTER
             setPadding(dp(8), dp(8), dp(8), dp(8))
@@ -136,7 +147,7 @@ class WakePanelController(private val context: Context) {
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 dp(22),
-            ).apply { topMargin = dp(6) },
+            ).apply { topMargin = dp(7) },
         )
 
         val frame = FrameLayout(context)
@@ -190,7 +201,7 @@ class WakePanelController(private val context: Context) {
     fun setState(state: State) {
         val color = when (state) {
             State.LISTENING -> ACCENT
-            State.PROCESSING -> 0xFFFFC857.toInt()
+            State.PROCESSING -> 0xFFEAF6FF.toInt()
             State.ERROR -> 0xFFFF6B6B.toInt()
         }
         orb?.accent = color
@@ -222,7 +233,53 @@ class WakePanelController(private val context: Context) {
     }
 
     private companion object {
-        const val ACCENT = 0xFF3FD4FF.toInt()
+        const val ACCENT = 0xFF7EE8FF.toInt()
+    }
+
+    /**
+     * The little breathing dot that precedes "ORIÓN · ESCUCHANDO". In the
+     * reference dashboard the identity badge carries a pulsing dot; here it
+     * doubles as the "system alive" indicator for the card.
+     */
+    private class PulseDotView(context: Context) : View(context) {
+
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        private var phase = 0f
+
+        private val animator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 2_400
+            repeatCount = ValueAnimator.INFINITE
+            repeatMode = ValueAnimator.REVERSE
+            interpolator = LinearInterpolator()
+            addUpdateListener {
+                phase = it.animatedValue as Float
+                invalidate()
+            }
+        }
+
+        override fun onAttachedToWindow() {
+            super.onAttachedToWindow()
+            animator.start()
+        }
+
+        override fun onDetachedFromWindow() {
+            animator.cancel()
+            super.onDetachedFromWindow()
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            val cx = width / 2f
+            val cy = height / 2f
+            val r = min(cx, cy) * (0.62f + 0.18f * phase)
+            val accent = 0xFF7EE8FF.toInt()
+            paint.color = Color.argb(
+                (150 + 105 * phase).toInt().coerceIn(120, 255),
+                Color.red(accent),
+                Color.green(accent),
+                Color.blue(accent),
+            )
+            canvas.drawCircle(cx, cy, r, paint)
+        }
     }
 
     /**
@@ -240,7 +297,7 @@ class WakePanelController(private val context: Context) {
         }
 
         @Volatile
-        var accent: Int = 0xFF3FD4FF.toInt()
+        var accent: Int = 0xFF7EE8FF.toInt()
             set(value) {
                 field = value
                 invalidate()
@@ -328,7 +385,7 @@ class WakePanelController(private val context: Context) {
         }
 
         @Volatile
-        var accent: Int = 0xFF3FD4FF.toInt()
+        var accent: Int = 0xFF7EE8FF.toInt()
             set(value) {
                 field = value
                 invalidate()

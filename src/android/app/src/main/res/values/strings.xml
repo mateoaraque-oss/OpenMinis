@@ -2758,11 +2758,11 @@
     <string name="orion_wake_phrase_dialog_body">Type the phrase you want to say. Spanish works best; two or three words avoid false activations.</string>
     <string name="orion_wake_phrase_save">Save</string>
     <string name="orion_wake_phrase_cancel">Cancel</string>
-    <string name="orion_wake_panel_title">Orion</string>
-    <string name="orion_wake_panel_hint">At your service, sir.</string>
+    <string name="orion_wake_panel_title">Orion · Mk II</string>
+    <string name="orion_wake_panel_hint">Speak, sir. I am listening.</string>
     <string name="orion_wake_panel_listening">Listening, sir.</string>
-    <string name="orion_wake_panel_processing">Working on it.</string>
-    <string name="orion_wake_panel_heard">Understood</string>
+    <string name="orion_wake_panel_processing">Processing, sir.</string>
+    <string name="orion_wake_panel_heard">Understood, sir</string>
     <string name="orion_wake_panel_no_match">I did not catch that, sir</string>
     <string name="orion_voice_replies_title">Answer out loud</string>
     <string name="orion_voice_replies_subtitle">Speak the reply after the wake phrase</string>
