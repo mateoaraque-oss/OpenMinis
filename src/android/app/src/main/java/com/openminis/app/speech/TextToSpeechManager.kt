@@ -10,6 +10,7 @@ import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import java.util.Locale
 import java.util.UUID
 
@@ -247,6 +248,22 @@ class TextToSpeechManager : TextToSpeech.OnInitListener {
         if (isInitialized) return true
         if (initFailed) return false
         return kotlinx.coroutines.withTimeoutOrNull(timeoutMs) { initResult.await() } ?: false
+    }
+
+    /**
+     * [T-orion-speak-answer-only] Suspend until the current utterance has been
+     * spoken (bounded by [timeoutMs]).
+     *
+     * The wake-word service has to know when to reopen the microphone: resuming
+     * the listener while Orion is still talking made the recognizer transcribe
+     * its own reply. [isSpeaking] flips on synchronously in [speak], so a reply
+     * that has not started yet still counts as in flight.
+     */
+    suspend fun awaitSpeechEnd(timeoutMs: Long = 60_000L): Boolean {
+        if (!_isSpeaking.value) return true
+        return kotlinx.coroutines.withTimeoutOrNull(timeoutMs) {
+            isSpeaking.first { !it }
+        } != null
     }
 
     /**

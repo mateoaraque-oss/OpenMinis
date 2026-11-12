@@ -2764,6 +2764,10 @@
     <string name="orion_wake_panel_processing">Processing, sir.</string>
     <string name="orion_wake_panel_heard">Understood, sir</string>
     <string name="orion_wake_panel_no_match">I did not catch that, sir</string>
+    <string name="orion_wake_panel_working">Working on it, sir.</string>
+    <string name="orion_wake_panel_ready">Done, sir.</string>
+    <string name="orion_wake_panel_failed">I could not complete that, sir</string>
+    <string name="orion_voice_session_title">Orion · Voice</string>
     <string name="orion_voice_replies_title">Answer out loud</string>
     <string name="orion_voice_replies_subtitle">Speak the reply after the wake phrase</string>
     <string name="orion_accessibility">Screen control and actions</string>

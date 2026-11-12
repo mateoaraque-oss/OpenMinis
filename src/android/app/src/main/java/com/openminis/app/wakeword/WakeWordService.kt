@@ -34,9 +34,13 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.openminis.app.MainActivity
+import com.openminis.app.MinisApp
 import com.openminis.app.R
+import com.openminis.app.debug.HeadlessChatRunner
 import com.openminis.app.deeplink.DeepLinkCoordinator
+import com.openminis.app.speech.TextToSpeechManager
 import com.openminis.app.speech.VoiceOutputState
+import com.openminis.app.speech.VoiceReplyFormatter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -45,6 +49,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -95,6 +100,26 @@ class WakeWordService : Service(), LifecycleEventObserver {
         private const val KEY_PHRASE = "phrase"
         private const val KEY_VOICE_REPLIES = "voice_replies"
 
+        /**
+         * [T-orion-voice-actions] When true (default) a wake-phrase command is
+         * executed straight from the panel — no chat screen — and only the
+         * final answer is spoken. When false the old behaviour applies: the
+         * transcript is handed to a full voice chat and the user keeps talking
+         * there.
+         */
+        private const val KEY_VOICE_ACTIONS = "voice_actions"
+
+        /** Session the voice commands accumulate in, so follow-ups have context. */
+        private const val KEY_VOICE_SESSION = "voice_session_id"
+
+        /**
+         * [T-orion-voice-actions] Ceiling for one headless voice turn. Generous:
+         * a command may open apps, tap through screens or wait on the network,
+         * and cutting it at the first pause would tell the user it failed while
+         * it was still working.
+         */
+        private const val VOICE_TURN_TIMEOUT_MS = 240_000L
+
         const val DEFAULT_PHRASE = "oye orión"
 
         private const val RETRIGGER_MS = 4_000L
@@ -140,6 +165,20 @@ class WakeWordService : Service(), LifecycleEventObserver {
         fun setSpeaksReplies(context: Context, enabled: Boolean) {
             context.getSharedPreferences(PREFS, MODE_PRIVATE)
                 .edit().putBoolean(KEY_VOICE_REPLIES, enabled).apply()
+        }
+
+        /**
+         * [T-orion-voice-actions] Whether a wake-phrase command should be carried
+         * out on the panel instead of opening the chat screen. Default true:
+         * the user asked for a floating assistant that acts and reports back.
+         */
+        fun runsActionsByVoice(context: Context): Boolean =
+            context.getSharedPreferences(PREFS, MODE_PRIVATE)
+                .getBoolean(KEY_VOICE_ACTIONS, true)
+
+        fun setRunsActionsByVoice(context: Context, enabled: Boolean) {
+            context.getSharedPreferences(PREFS, MODE_PRIVATE)
+                .edit().putBoolean(KEY_VOICE_ACTIONS, enabled).apply()
         }
 
         /** Stop and start the service so the detector picks up a new phrase. */
@@ -190,6 +229,13 @@ class WakeWordService : Service(), LifecycleEventObserver {
     private var panel: WakePanelController? = null
     private var speech: SpeechRecognizer? = null
     private val panelTimeout = Runnable { closePanel(resume = true) }
+
+    /**
+     * [T-orion-voice-actions] Engine used to speak the answer of a panel
+     * command. Separate from the chat's read-aloud player: the panel has no
+     * ChatScreen behind it, so nothing else would ever speak the reply.
+     */
+    private var replyTts: TextToSpeechManager? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -244,6 +290,8 @@ class WakeWordService : Service(), LifecycleEventObserver {
         job = null
         main.removeCallbacks(panelTimeout)
         runCatching { closePanel(resume = false) }
+        runCatching { replyTts?.shutdown() }
+        replyTts = null
         scope.cancel()
         runCatching { vosk?.close() }
         runCatching { oww?.close() }
@@ -543,13 +591,131 @@ class WakeWordService : Service(), LifecycleEventObserver {
         }
     }
 
-    /** Transcript ready: open a fresh voice chat and let ChatScreen send it. */
+    /** Transcript ready: execute it on the panel, or open a chat when asked to. */
     private fun deliverPrompt(text: String) {
         val clean = text.trim()
         if (clean.isEmpty()) return
         Log.w(TAG, "panel transcript: ${clean.take(80)}")
         main.removeCallbacks(panelTimeout)
-        closePanel(resume = false)
+        destroySpeech()
+        if (runsActionsByVoice(this)) {
+            runVoiceCommand(clean)
+        } else {
+            openChatWithPrompt(clean)
+        }
+    }
+
+    /**
+     * [T-orion-voice-actions] Carry the command out in the background and report
+     * the outcome out loud.
+     *
+     * This is the difference the user asked for: the panel no longer hands the
+     * transcript to a chat screen, so Orion performs the action over whatever
+     * app is in front and answers when it is done. Only the final assistant
+     * message is spoken ([VoiceReplyFormatter] strips code, links and status
+     * chatter, and the tool activity never reaches the engine at all).
+     */
+    private fun runVoiceCommand(prompt: String) {
+        val app = applicationContext as? MinisApp
+        if (app == null) {
+            Log.w(TAG, "MinisApp missing — falling back to the chat screen")
+            openChatWithPrompt(prompt)
+            return
+        }
+        paused = true
+        panel?.setState(WakePanelController.State.PROCESSING)
+        panel?.setStatus(getString(R.string.orion_wake_panel_working))
+        scope.launch {
+            val sessionId = ensureVoiceSession(app)
+            if (sessionId == null) {
+                Log.w(TAG, "no provider for voice commands — falling back to the chat screen")
+                main.post { openChatWithPrompt(prompt) }
+                return@launch
+            }
+            val started = System.currentTimeMillis()
+            val result = runCatching {
+                HeadlessChatRunner.prompt(
+                    context = this@WakeWordService,
+                    sessionId = sessionId,
+                    text = prompt,
+                    wait = true,
+                    timeoutMs = VOICE_TURN_TIMEOUT_MS,
+                )
+            }.getOrNull()
+            val reply = VoiceReplyFormatter.forSpeech(result?.responseText)
+            Log.w(
+                TAG,
+                "voice command done status=${result?.status} timedOut=${result?.timedOut} " +
+                    "chars=${reply.length} in ${System.currentTimeMillis() - started}ms",
+            )
+            if (reply.isEmpty()) {
+                main.post {
+                    panel?.setState(WakePanelController.State.ERROR)
+                    panel?.setStatus(getString(R.string.orion_wake_panel_failed))
+                    main.postDelayed({ closePanel(resume = true) }, 1_400)
+                }
+                return@launch
+            }
+            main.post {
+                panel?.setState(WakePanelController.State.PROCESSING)
+                panel?.setStatus(getString(R.string.orion_wake_panel_ready))
+                panel?.setTranscript(reply.take(160))
+            }
+            speakReply(reply)
+            main.post { closePanel(resume = true) }
+        }
+    }
+
+    /**
+     * [T-orion-voice-actions] The session voice commands accumulate in, created
+     * on first use. One persistent session (rather than one per command) is what
+     * lets «y ahora abre WhatsApp» resolve against what was just done.
+     */
+    private suspend fun ensureVoiceSession(app: MinisApp): String? {
+        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+        val saved = prefs.getString(KEY_VOICE_SESSION, null)
+        if (saved != null && app.chatRepository.getSession(saved) != null) return saved
+        val modelId = runCatching {
+            app.providerRepository.allVisibleEntries().firstOrNull()?.baseModel?.id
+        }.getOrNull()?.takeIf { it.isNotBlank() } ?: return null
+        val session = runCatching {
+            app.chatRepository.createSession(
+                modelId = modelId,
+                title = getString(R.string.orion_voice_session_title),
+                memoryEnabled = com.openminis.app.data.MemoryGlobalPrefs.isGlobalEnabled(app),
+            )
+        }.getOrNull() ?: return null
+        prefs.edit().putString(KEY_VOICE_SESSION, session.id).apply()
+        Log.w(TAG, "voice session ${session.id.take(8)} created")
+        return session.id
+    }
+
+    /** [T-orion-voice-actions] Say [text] and wait for the engine to finish. */
+    private suspend fun speakReply(text: String) {
+        if (!speaksReplies(this)) {
+            Log.w(TAG, "voice replies disabled — answer stays on the panel")
+            delay(1_200)
+            return
+        }
+        val manager = withContext(Dispatchers.Main) {
+            val existing = replyTts ?: TextToSpeechManager().also { replyTts = it }
+            if (!existing.isInitialized) {
+                existing.init(this@WakeWordService)
+                existing.awaitReady()
+            }
+            existing
+        }
+        if (!manager.isInitialized) {
+            Log.w(TAG, "TTS unavailable — answer stays on the panel")
+            delay(1_200)
+            return
+        }
+        withContext(Dispatchers.Main) { manager.speak(text) }
+        manager.awaitSpeechEnd(timeoutMs = 15_000L + text.length * 110L)
+    }
+
+    /** Legacy path: hand the transcript to a full voice chat. */
+    private fun openChatWithPrompt(clean: String) {
         DeepLinkCoordinator.setPendingPrompt(clean)
         // [T-orion-voice-first] Launch the VOICE chat entry point, not the
         // plain one. MainActivity maps it to ChatAction.START_VOICE, which

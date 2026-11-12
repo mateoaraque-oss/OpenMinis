@@ -2038,6 +2038,10 @@
     <string name="orion_wake_panel_processing">Procesando, señor.</string>
     <string name="orion_wake_panel_heard">Entendido, señor</string>
     <string name="orion_wake_panel_no_match">No le he oído bien, señor</string>
+    <string name="orion_wake_panel_working">Ejecutando, señor.</string>
+    <string name="orion_wake_panel_ready">Hecho, señor.</string>
+    <string name="orion_wake_panel_failed">No he podido completarlo, señor</string>
+    <string name="orion_voice_session_title">Orión · Voz</string>
     <string name="orion_voice_replies_title">Responder en voz alta</string>
     <string name="orion_voice_replies_subtitle">Lee la respuesta al invocarlo por voz</string>
     <string name="orion_accessibility">Control de pantalla y acciones</string>
