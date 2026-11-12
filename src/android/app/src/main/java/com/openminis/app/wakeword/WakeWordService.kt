@@ -122,7 +122,7 @@ class WakeWordService : Service(), LifecycleEventObserver {
 
         const val DEFAULT_PHRASE = "oye orión"
 
-        private const val RETRIGGER_MS = 4_000L
+        private const val RETRIGGER_MS = 6_000L
         private const val PANEL_TIMEOUT_MS = 12_000L
 
         fun isEnabled(context: Context): Boolean =
@@ -449,6 +449,10 @@ class WakeWordService : Service(), LifecycleEventObserver {
 
     // ── wake: panel over the current app (Gemini style) ─────────────────
     private fun fire() {
+        // [T-orion-wake-strict] Never stack panels: while the previous command
+        // is still being heard, answered or executed, another match is either
+        // an echo of Orion itself or background speech.
+        if (panel?.isShowing == true) return
         val now = System.currentTimeMillis()
         if (now - lastTrigger < RETRIGGER_MS) return
         lastTrigger = now
@@ -539,8 +543,14 @@ class WakeWordService : Service(), LifecycleEventObserver {
                     panel?.setStatus(getString(R.string.orion_wake_panel_no_match))
                     main.postDelayed({ closePanel(resume = true) }, 900)
                 } else {
-                    closePanel(resume = false)
-                    openAssistActivity()
+                    // [T-orion-wake-strict] Was: close the panel and open the
+                    // full-screen assistant. With false wake-ups that turned
+                    // every stray word into the assistant menu. A recogniser
+                    // hiccup is not a reason to take over the screen; report it
+                    // on the panel and go back to listening.
+                    panel?.setState(WakePanelController.State.ERROR)
+                    panel?.setStatus(getString(R.string.orion_wake_panel_no_match))
+                    main.postDelayed({ closePanel(resume = true) }, 900)
                 }
             }
 
@@ -586,8 +596,9 @@ class WakeWordService : Service(), LifecycleEventObserver {
             recognizer.startListening(intent)
         } catch (t: Throwable) {
             Log.w(TAG, "startListening failed: ${t.message}")
-            closePanel(resume = false)
-            openAssistActivity()
+            panel?.setState(WakePanelController.State.ERROR)
+            panel?.setStatus(getString(R.string.orion_wake_panel_no_match))
+            main.postDelayed({ closePanel(resume = true) }, 900)
         }
     }
 

@@ -124,11 +124,28 @@ class VoskWakeWord(
     }
 
     private val target = normalize(phrase)
+    private val targetWords = target.split(' ').filter { it.isNotEmpty() }
+
+    /**
+     * [T-orion-wake-strict] Edit budget for a near match.
+     *
+     * The previous values (3 for a long phrase, 2 for a medium one) plus a
+     * ±2-char sliding window made the matcher accept almost any short Spanish
+     * utterance: "oye orión" is nine characters, so any 7–11 character decode
+     * within two edits fired the panel. That is why the assistant opened on
+     * nearly every word the user said.
+     */
     private val maxDistance = when {
-        target.length >= 14 -> 3
-        target.length >= 8 -> 2
-        else -> 1
+        target.length >= 14 -> 2
+        target.length >= 8 -> 1
+        else -> 0
     }
+
+    /** Minimum mean per-word acoustic confidence for an accepted decode. */
+    private val minMeanConfidence = 0.75
+
+    /** Nothing below this is a word Vosk should be trusted on. */
+    private val minWordConfidence = 0.45
 
     private val model: Model = Model(installDir(context).absolutePath)
     private var recognizer: Recognizer = newRecognizer(phrase)
@@ -172,21 +189,30 @@ class VoskWakeWord(
             if (closed) return false
             return try {
                 if (recognizer.acceptWaveForm(bytes, bytes.size)) {
-                    val text = jsonStringField(recognizer.result, "text")
-                    if (matches(text)) {
+                    val result = recognizer.result
+                    val text = jsonStringField(result, "text")
+                    if (matches(text) && confident(result)) {
+                        Log.i(TAG, "wake match: '${normalize(text)}' ${confidenceSummary(result)}")
                         recognizer.reset()
                         true
                     } else {
+                        if (text.isNotBlank()) {
+                            Log.d(TAG, "ignored '${normalize(text)}' ${confidenceSummary(result)}")
+                        }
+                        // A final segment that was not the phrase is ordinary
+                        // speech: start a fresh segment so the next words are
+                        // not glued onto it.
+                        if (text.isNotBlank()) recognizer.reset()
                         false
                     }
                 } else {
-                    val partial = jsonStringField(recognizer.partialResult, "partial")
-                    if (matches(partial)) {
-                        recognizer.reset()
-                        true
-                    } else {
-                        false
-                    }
+                    // [T-orion-wake-strict] Partials are NOT matched. Vosk
+                    // rewrites the tail of a partial every frame, so matching
+                    // them fired on fragments that later decoded differently —
+                    // with the tiny [phrase, unk] grammar the fragment is often
+                    // forced into the phrase itself. Only a final result is a
+                    // transcription worth acting on.
+                    false
                 }
             } catch (t: Throwable) {
                 Log.w(TAG, "vosk decode: ${t.message}")
@@ -195,32 +221,53 @@ class VoskWakeWord(
         }
     }
 
-    /** Visible for the WAV harness: does this transcript contain the phrase? */
+    /** Mean and minimum per-word confidence of a Vosk result, or null if absent. */
+    private fun confidences(json: String?): Pair<Double, Double>? {
+        if (json.isNullOrBlank()) return null
+        val values = Regex("\"conf\"\\s*:\\s*([0-9.]+)")
+            .findAll(json)
+            .mapNotNull { it.groupValues.getOrNull(1)?.toDoubleOrNull() }
+            .toList()
+        if (values.isEmpty()) return null
+        return values.average() to (values.minOrNull() ?: 0.0)
+    }
+
+    private fun confidenceSummary(json: String?): String {
+        val (mean, min) = confidences(json) ?: return "(no confidence)"
+        return "conf mean=${"%.2f".format(mean)} min=${"%.2f".format(min)}"
+    }
+
+    /**
+     * [T-orion-wake-strict] Reject decodes the acoustic model was not sure
+     * about.
+     *
+     * With a two-entry grammar (`phrase`, `[unk]`) Vosk is forced to explain
+     * every sound with one of them, so "did it recognise the phrase" is not a
+     * useful signal by itself — a muttered sentence can decode as the phrase
+     * with low confidence. The per-word `conf` values are what separate a real
+     * "oye orión" from background speech.
+     */
+    private fun confident(json: String?): Boolean {
+        val (mean, min) = confidences(json) ?: return true
+        return mean >= minMeanConfidence && min >= minWordConfidence
+    }
+
+    /**
+     * Visible for the WAV harness: does this transcript contain the phrase?
+     *
+     * [T-orion-wake-strict] Strict on purpose — an exact occurrence of the
+     * phrase anywhere in the transcript ("oye orión abre whatsapp" still
+     * counts), or the whole transcript within a one-to-two edit budget. The
+     * sliding-window search is gone: it let any 7–11 character fragment match.
+     */
     fun matches(rawText: String): Boolean {
         if (target.isEmpty()) return false
         val text = normalize(rawText)
         if (text.isEmpty()) return false
         if (text.contains(target)) return true
-        if (abs(text.length - target.length) <= maxDistance + 2 &&
+        if (targetWords.size < 2) return false
+        return abs(text.length - target.length) <= 1 &&
             levenshtein(text, target, maxDistance) <= maxDistance
-        ) {
-            return true
-        }
-        if (text.length > target.length) {
-            // Sliding window: the phrase can sit inside a longer utterance
-            // ("oye orión abre whatsapp") or be split oddly by the decoder.
-            val shortest = max(3, target.length - 2)
-            val longest = target.length + 2
-            for (len in shortest..longest) {
-                if (len > text.length) break
-                for (start in 0..(text.length - len)) {
-                    if (levenshtein(text.substring(start, start + len), target, maxDistance) <= maxDistance) {
-                        return true
-                    }
-                }
-            }
-        }
-        return false
     }
 
     fun close() {
