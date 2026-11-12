@@ -108,6 +108,12 @@ jobs:
           ls -lh src/android/app/src/main/assets/proot-aarch64
           ls -lh src/android/app/src/main/jniLibs/arm64-v8a/
 
+      - name: Prepare Alpine rootfs
+        run: |
+          chmod +x scripts/prepare_android_sandbox.sh
+          ./scripts/prepare_android_sandbox.sh
+          ls -lh src/android/app/src/main/assets/alpine-minirootfs.tar.gz
+
       - name: Bundle llama.cpp server (Android arm64)
         run: |
           set -euo pipefail

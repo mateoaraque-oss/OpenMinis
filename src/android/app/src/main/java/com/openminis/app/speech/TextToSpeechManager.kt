@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.speech.tts.Voice
 import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -142,7 +143,29 @@ class TextToSpeechManager : TextToSpeech.OnInitListener {
         // previously kept no Context at all, which is part of why the language
         // decision could only ever look at the text's script.
         appContext = context.applicationContext
-        tts = TextToSpeech(context.applicationContext, this)
+        tts = createEngine(context.applicationContext)
+    }
+
+    /**
+     * [T-orion-natural-voice] Bind Google's neural engine explicitly when it is
+     * installed.
+     *
+     * OEM and AOSP engines (eSpeak, Pico) are concatenative synthesisers: they
+     * are intelligible but plainly robotic, and several ship no Spanish data at
+     * all. Google TTS renders the same text with an installed neural voice and
+     * degrades to the platform default only when it is absent.
+     */
+    private fun createEngine(context: Context): TextToSpeech {
+        val googleEngine = "com.google.android.tts"
+        val installed = runCatching {
+            context.packageManager.getPackageInfo(googleEngine, 0)
+        }.isSuccess
+        if (installed) {
+            runCatching { TextToSpeech(context, this, googleEngine) }
+                .getOrNull()
+                ?.let { return it }
+        }
+        return TextToSpeech(context, this)
     }
 
     /**
@@ -482,6 +505,7 @@ class TextToSpeechManager : TextToSpeech.OnInitListener {
             val rc = runCatching { engine.setLanguage(candidate) }
                 .getOrDefault(TextToSpeech.LANG_NOT_SUPPORTED)
             if (rc != TextToSpeech.LANG_MISSING_DATA && rc != TextToSpeech.LANG_NOT_SUPPORTED) {
+                applyBestVoice(engine, candidate)
                 return
             }
         }
@@ -491,6 +515,68 @@ class TextToSpeechManager : TextToSpeech.OnInitListener {
                 "current language (install the language's TTS data to fix)",
         )
     }
+
+    /**
+     * [T-orion-natural-voice] Language tag the engine is currently voiced with,
+     * so the (comparatively expensive) voice scan runs once per language rather
+     * than once per spoken sentence.
+     */
+    @Volatile
+    private var voicedLanguageTag: String? = null
+
+    /**
+     * [T-orion-natural-voice] Pick the best installed voice for [locale].
+     *
+     * `setLanguage` only tells the engine *which* language to speak; it leaves
+     * the voice at that locale's default, which on Google TTS is the heavily
+     * compressed "language" fallback — the classic robotic read-aloud. The
+     * engine also exposes the installed neural voices, each tagged with a
+     * quality tier (LOW..VERY_HIGH). Choosing the highest quality voice that
+     * works offline is what turns the reply into something that sounds human.
+     *
+     * Falls back silently to the engine default when the engine reports no
+     * voices (engines that do not implement the voice API).
+     */
+    private fun applyBestVoice(engine: TextToSpeech, locale: Locale) {
+        val tag = locale.toLanguageTag()
+        if (voicedLanguageTag == tag) return
+        val voices = runCatching { engine.voices }.getOrNull() ?: return
+        val installed = voices.filter { voice ->
+            val voiceLocale = voice.locale
+            voiceLocale.language.equals(locale.language, ignoreCase = true) &&
+                (
+                    locale.country.isEmpty() ||
+                        voiceLocale.country.isEmpty() ||
+                        voiceLocale.country.equals(locale.country, ignoreCase = true)
+                    ) &&
+                !voiceRequiresMissingData(voice)
+        }
+        if (installed.isEmpty()) {
+            Log.w(TAG, "no installed voices for $tag — keeping the engine default")
+            return
+        }
+        val best = installed.sortedWith(
+            compareByDescending<Voice> { it.quality }
+                .thenBy { it.isNetworkConnectionRequired }
+                .thenByDescending { it.name },
+        ).first()
+        val rc = runCatching { engine.setVoice(best) }.getOrDefault(TextToSpeech.ERROR)
+        if (rc == TextToSpeech.SUCCESS) {
+            voicedLanguageTag = tag
+            Log.i(
+                TAG,
+                "voice=${best.name} quality=${best.quality} " +
+                    "locale=${best.locale.toLanguageTag()} offline=${!best.isNetworkConnectionRequired}",
+            )
+        } else {
+            Log.w(TAG, "setVoice(${best.name}) rejected (rc=$rc) — keeping engine default")
+        }
+    }
+
+    /** [T-orion-natural-voice] True when a voice is listed but its data is not downloaded. */
+    private fun voiceRequiresMissingData(voice: Voice): Boolean = runCatching {
+        voice.features?.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED) == true
+    }.getOrDefault(false)
 
     private fun buildSpeechParams(): android.os.Bundle {
         return android.os.Bundle().apply {
