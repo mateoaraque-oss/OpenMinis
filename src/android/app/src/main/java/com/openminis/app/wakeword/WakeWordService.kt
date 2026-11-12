@@ -250,14 +250,18 @@ class WakeWordService : Service(), LifecycleEventObserver {
                 // Debug-only harness: score a WAV instead of the microphone so
                 // the pipeline can be validated over adb without shouting at
                 // the phone. Harmless in the field (the action is not exported).
-                startForegroundNotification()
+                //
+                // [T-orion-wake-fgs-guard] No startForeground here: the harness
+                // never opens the mic, and promoting to a microphone foreground
+                // service from a debug `am startservice` is exactly the call
+                // Android 15 rejects with a SecurityException. It used to take
+                // the whole process down before a single WAV was decoded.
                 scope.launch { runWavTest(path) }
                 return START_NOT_STICKY
             }
             ACTION_TEST_PANEL -> {
                 // Debug-only: `text` skips the microphone and exercises the
                 // transcript -> pending prompt -> new chat bridge.
-                startForegroundNotification()
                 val text = intent.getStringExtra(EXTRA_TEXT)
                 main.post {
                     if (text.isNullOrBlank()) openWakePanel() else deliverPrompt(text)
@@ -270,7 +274,11 @@ class WakeWordService : Service(), LifecycleEventObserver {
             }
         }
 
-        startForegroundNotification()
+        if (!startForegroundNotification()) {
+            Log.w(TAG, "stopping: microphone foreground service not allowed right now")
+            stopSelf()
+            return START_NOT_STICKY
+        }
         if (!hasMic(this)) {
             Log.w(TAG, "RECORD_AUDIO not granted — stopping")
             setEnabled(this, false)
@@ -873,7 +881,21 @@ class WakeWordService : Service(), LifecycleEventObserver {
         }
     }
 
-    private fun startForegroundNotification() {
+    /**
+     * [T-orion-wake-fgs-guard] Promote to a microphone foreground service.
+     *
+     * Android 12+ refuses `startForeground(..., TYPE_MICROPHONE)` when the
+     * start did not come from a visible app: the mic is a while-in-use
+     * permission, so the process must already be in the foreground. Any
+     * explicit start from outside the UI (a debug `am startservice`, an OEM
+     * "restart my services" helper, a stale start request the system replays)
+     * therefore throws. Uncaught, that exception kills the process — and the
+     * system, seeing a crashed start-requested service, restarts it, which
+     * crashes again: a silent crash loop that also takes the accessibility
+     * service down with it. Report and stop instead; the service comes back
+     * the next time the user opens Orion.
+     */
+    private fun startForegroundNotification(): Boolean {
         val tap = PendingIntent.getActivity(
             this,
             0,
@@ -891,14 +913,20 @@ class WakeWordService : Service(), LifecycleEventObserver {
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE,
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE,
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+            true
+        } catch (t: Throwable) {
+            Log.w(TAG, "cannot start microphone foreground service: ${t.message}")
+            false
         }
     }
 }
