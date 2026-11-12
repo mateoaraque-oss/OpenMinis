@@ -38,6 +38,8 @@ import com.openminis.app.MinisApp
 import com.openminis.app.R
 import com.openminis.app.debug.HeadlessChatRunner
 import com.openminis.app.deeplink.DeepLinkCoordinator
+import com.openminis.app.speech.RecognitionState
+import com.openminis.app.speech.SpeechRecognitionManager
 import com.openminis.app.speech.TextToSpeechManager
 import com.openminis.app.speech.VoiceOutputState
 import com.openminis.app.speech.VoiceReplyFormatter
@@ -47,6 +49,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -224,6 +227,26 @@ class WakeWordService : Service(), LifecycleEventObserver {
     private var vosk: VoskWakeWord? = null
     private var oww: OpenWakeWord? = null
     @Volatile private var paused = false
+
+    /**
+     * [T-orion-wake-inapp] True while Orion itself is on screen.
+     *
+     * The detector used to stop completely whenever the app was visible, so
+     * saying the phrase inside the chat did nothing. It now keeps listening:
+     * the wake is handed to the app's own voice card (the one the assistant
+     * gesture opens) instead of the floating overlay, which would sit on top
+     * of the very screen that should show the transcript.
+     */
+    @Volatile private var appVisible = false
+
+    /**
+     * [T-orion-wake-inapp] True while the chat's voice input owns the mic.
+     *
+     * Two recorders in one process fight for the microphone and the loser gets
+     * silence, which would break whichever side lost. The chat's recogniser
+     * always wins: the detector releases the mic for as long as this is set.
+     */
+    @Volatile private var chatRecording = false
     @Volatile private var lastTrigger = 0L
 
     private var panel: WakePanelController? = null
@@ -241,6 +264,15 @@ class WakeWordService : Service(), LifecycleEventObserver {
         super.onCreate()
         createChannel()
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)
+        // [T-orion-wake-inapp] Follow the chat's voice input so the two
+        // recorders never run at the same time.
+        scope.launch {
+            SpeechRecognitionManager.state.collect { state ->
+                chatRecording = state == RecognitionState.STARTING ||
+                    state == RecognitionState.RECORDING ||
+                    state == RecognitionState.FINISHING
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -318,13 +350,17 @@ class WakeWordService : Service(), LifecycleEventObserver {
     override fun onStateChanged(source: LifecycleOwner, event: Lifecycle.Event) {
         when (event) {
             Lifecycle.Event.ON_START -> {
-                // The app is visible: it may capture audio for a voice message,
-                // and a wake word firing on its own reply would loop.
-                paused = true
+                // [T-orion-wake-inapp] Was: stop listening entirely. That made
+                // the phrase dead inside Orion. Now the detector keeps running
+                // and only yields the mic to the chat's own voice input (see
+                // [chatRecording]); a match here opens the in-app voice card
+                // rather than the overlay.
+                appVisible = true
                 if (panel?.isShowing == true) main.post { closePanel(resume = false) }
-                Log.w(TAG, "paused (app in foreground)")
+                Log.w(TAG, "app in foreground (in-app wake)")
             }
             Lifecycle.Event.ON_STOP -> {
+                appVisible = false
                 paused = false
                 Log.w(TAG, "resumed (app in background)")
             }
@@ -336,7 +372,7 @@ class WakeWordService : Service(), LifecycleEventObserver {
     private suspend fun listenLoop() {
         val buffer = ShortArray(1_280)
         while (scope.isActive) {
-            if (paused) {
+            if (paused || chatRecording) {
                 delay(250)
                 continue
             }
@@ -358,7 +394,7 @@ class WakeWordService : Service(), LifecycleEventObserver {
                 }
                 Log.w(TAG, "listening (${engineName()}, phrase=\"${getPhrase(this)}\")")
                 var filled = 0
-                while (scope.isActive && !paused) {
+                while (scope.isActive && !paused && !chatRecording) {
                     val n = record.read(buffer, filled, buffer.size - filled)
                     if (n <= 0) {
                         delay(50)
@@ -464,13 +500,37 @@ class WakeWordService : Service(), LifecycleEventObserver {
         val now = System.currentTimeMillis()
         if (now - lastTrigger < RETRIGGER_MS) return
         lastTrigger = now
-        Log.w(TAG, "wake phrase detected")
-        paused = true
+        Log.w(TAG, "wake phrase detected (inApp=$appVisible)")
         // Audible acknowledgement, JARVIS-style two-note chime. With the
         // screen off the overlay is not visible, so this is the only way to
         // tell the user the phrase landed.
         playWakeChime()
+        if (appVisible) {
+            // [T-orion-wake-inapp] Orion is on screen, so an overlay would sit
+            // on top of the app that is already showing a transcript. Open the
+            // app's own voice card instead — the same one the assistant
+            // gesture does — and stay quiet for a moment so its recogniser
+            // gets the microphone first.
+            paused = true
+            main.post { openInAppVoiceInput() }
+            main.postDelayed({ if (!chatRecording) paused = false }, 3_000)
+            return
+        }
+        paused = true
         main.post { openWakePanel() }
+    }
+
+    /** [T-orion-wake-inapp] The assistant's own voice-chat entry point. */
+    private fun openInAppVoiceInput() {
+        val intent = Intent(this, MainActivity::class.java)
+            .setAction(Intent.ACTION_ASSIST)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        try {
+            startActivity(intent)
+        } catch (t: Throwable) {
+            Log.w(TAG, "cannot open the in-app voice input: ${t.message}")
+            paused = false
+        }
     }
 
     /**
