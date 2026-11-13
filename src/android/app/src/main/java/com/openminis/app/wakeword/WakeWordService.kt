@@ -658,6 +658,12 @@ class WakeWordService : Service(), LifecycleEventObserver {
             if (!manager.isInitialized) {
                 false
             } else {
+                // [T-orion-wake-greeting] JARVIS voice: deeper pitch and slower
+                // rate so the greeting doesn't sound like a "chica" voice.
+                withContext(Dispatchers.Main) {
+                    manager.speechPitch = 0.85f
+                    manager.speechRate = 0.95f
+                }
                 // [T-orion-wake-greeting] speak() has no result: when the engine
                 // rejects the request it clears isSpeaking, and awaitSpeechEnd()
                 // then reports success on the spot. Treating that as "spoke"
@@ -906,6 +912,12 @@ class WakeWordService : Service(), LifecycleEventObserver {
             Log.w(TAG, "TTS unavailable — answer stays on the panel")
             delay(1_200)
             return
+        }
+        // [T-orion-wake-greeting] JARVIS voice: deeper pitch and slower rate so
+        // the spoken reply doesn't sound like a "chica" voice.
+        withContext(Dispatchers.Main) {
+            manager.speechPitch = 0.85f
+            manager.speechRate = 0.95f
         }
         withContext(Dispatchers.Main) { manager.speak(text) }
         manager.awaitSpeechEnd(timeoutMs = 15_000L + text.length * 110L)

@@ -116,6 +116,19 @@ object LocalModelProvider {
                 .firstOrNull { it.baseModel.id == modelId && !it.isHidden }
         }
 
+        // [T-orion-local-chat] Normalize the entry's provider field: catalog
+        // sync rewrites it to "Custom", which breaks label-based detection.
+        // Re-write it to LABEL so isLocalModelSelected keeps matching even if
+        // the instance lookup path isn't taken.
+        if (entry != null &&
+            !entry.baseModel.provider.equals(LABEL, ignoreCase = true)) {
+            repo.updateEntry(
+                entry.copy(baseModel = entry.baseModel.copy(provider = LABEL)),
+            )
+            entry = repo.entriesFor(instance.id)
+                .firstOrNull { it.baseModel.id == modelId && !it.isHidden }
+        }
+
         // New chats fall back to the last-used entry; setting it here is what
         // makes the next message go to the phone instead of the cloud.
         if (entry != null) repo.lastUsedEntryId = entry.id

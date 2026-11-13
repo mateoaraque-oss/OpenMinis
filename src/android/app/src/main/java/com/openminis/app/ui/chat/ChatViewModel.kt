@@ -2443,11 +2443,31 @@ class ChatViewModel(
      * The subset is only exposed when the model's own chat template supports
      * tool calls; see [com.openminis.app.localmodel.LocalChatMode].
      */
+    /**
+     * True when the currently resolved main model is the on-device llama-server
+     * provider ("Orion local").
+     *
+     * Walks the active entry → its provider instance → the instance's label,
+     * because the entry's `baseModel.provider` field is overwritten by catalog
+     * sync to `"Custom"`, so comparing it against LABEL silently fails and the
+     * local model is treated as cloud: a ~13k-token agent prompt lands on an
+     * 8k/16k engine and the turn aborts with `[ctx-trim] context full`.
+     * The string comparison on `currentModel.provider` is kept as a fallback
+     * for entries created by builds that still set `provider = LABEL`.
+     */
     private val isLocalModelSelected: Boolean
-        get() = currentModel?.provider.equals(
-            com.openminis.app.localmodel.LocalModelProvider.LABEL,
-            ignoreCase = true,
-        )
+        get() {
+            val entryId = _activeEntryId.value ?: return false
+            val entry = providerRepository.config.value.modelEntries.find { it.id == entryId } ?: return false
+            val instance = entry.providerInstanceId?.let { providerRepository.instance(it) } ?: return false
+            return instance.label.equals(
+                com.openminis.app.localmodel.LocalModelProvider.LABEL,
+                ignoreCase = true,
+            ) || currentModel?.provider.equals(
+                com.openminis.app.localmodel.LocalModelProvider.LABEL,
+                ignoreCase = true,
+            )
+        }
 
     /**
      * Does the CURRENTLY RESOLVED main model natively consume image pixels?
