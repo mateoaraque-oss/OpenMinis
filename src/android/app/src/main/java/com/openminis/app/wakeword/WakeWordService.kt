@@ -43,6 +43,7 @@ import com.openminis.app.speech.SpeechRecognitionManager
 import com.openminis.app.speech.TextToSpeechManager
 import com.openminis.app.speech.VoiceOutputState
 import com.openminis.app.speech.VoiceReplyFormatter
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -272,6 +273,16 @@ class WakeWordService : Service(), LifecycleEventObserver {
     private var panel: WakePanelController? = null
     private var speech: SpeechRecognizer? = null
     private val panelTimeout = Runnable { closePanel(resume = true) }
+
+    /**
+     * [T-orion-wake-greeting] The greeting runs asynchronously, and the card it
+     * belongs to can be dismissed (or replaced by a new trigger) before it ends.
+     * Bumping [panelGeneration] on close invalidates the in-flight greeting so
+     * it can neither open the microphone for a card it no longer owns nor start
+     * listening in the middle of a newer greeting.
+     */
+    private var panelGeneration = 0
+    private var greetJob: Job? = null
 
     /**
      * [T-orion-voice-actions] Engine used to speak the answer of a panel
@@ -557,8 +568,9 @@ class WakeWordService : Service(), LifecycleEventObserver {
 
     /**
      * Short acknowledgement tone, used only when the spoken greeting cannot
-     * play (no TTS engine, engine still binding, replies muted at the OS).
-     * ToneGenerator runs on its own stream and is released right away.
+     * play (no TTS engine, engine still binding, utterance rejected, or the
+     * user turned spoken replies off). ToneGenerator runs on its own stream and
+     * is released right away.
      */
     private fun playWakeChime() {
         try {
@@ -595,12 +607,19 @@ class WakeWordService : Service(), LifecycleEventObserver {
         controller.setState(WakePanelController.State.PROCESSING)
         controller.setStatus(getString(R.string.orion_wake_panel_waking))
         main.removeCallbacks(panelTimeout)
-        scope.launch {
+        // The greeting phase is bounded too, so a card that never gets to listen
+        // (engine stuck, call stealing audio focus) still closes on its own.
+        main.postDelayed(panelTimeout, PANEL_TIMEOUT_MS)
+        greetJob?.cancel()
+        val generation = ++panelGeneration
+        greetJob = scope.launch {
             greetOnWake()
             main.post {
-                // The card may have been dismissed (timeout, back, another
-                // trigger) while Orion was still saying hello.
-                if (panel?.isShowing == true) startPanelSpeech()
+                // [T-orion-wake-greeting] Only the greeting of the card that is
+                // still on screen may open the microphone: the card may have
+                // been dismissed (timeout, back, another trigger) while Orion
+                // was still saying hello.
+                if (generation == panelGeneration && panel?.isShowing == true) startPanelSpeech()
             }
         }
     }
@@ -620,7 +639,14 @@ class WakeWordService : Service(), LifecycleEventObserver {
      * two-note chime is the fallback acknowledgement.
      */
     private suspend fun greetOnWake() {
-        val spoken = runCatching {
+        // [T-orion-wake-greeting] "Read replies" off means silent, and a
+        // greeting is speech like any other: the card alone is the
+        // acknowledgement. Chiming instead would be just as unwanted.
+        if (!speaksReplies(this)) {
+            Log.w(TAG, "voice replies disabled — greeting stays silent")
+            return
+        }
+        val spoke = try {
             val manager = withContext(Dispatchers.Main) {
                 val existing = replyTts ?: TextToSpeechManager().also { replyTts = it }
                 if (!existing.isInitialized) {
@@ -629,14 +655,31 @@ class WakeWordService : Service(), LifecycleEventObserver {
                 }
                 existing
             }
-            if (!manager.isInitialized) return@runCatching false
-            withContext(Dispatchers.Main) {
-                manager.speak(getString(R.string.orion_wake_panel_greeting))
+            if (!manager.isInitialized) {
+                false
+            } else {
+                // [T-orion-wake-greeting] speak() has no result: when the engine
+                // rejects the request it clears isSpeaking, and awaitSpeechEnd()
+                // then reports success on the spot. Treating that as "spoke"
+                // left the wake silent — no greeting and, worse, no chime.
+                val accepted = withContext(Dispatchers.Main) {
+                    manager.speak(getString(R.string.orion_wake_panel_greeting))
+                    manager.isSpeaking.value
+                }
+                accepted && manager.awaitSpeechEnd(GREETING_TIMEOUT_MS)
             }
-            manager.awaitSpeechEnd(GREETING_TIMEOUT_MS)
-        }.getOrDefault(false)
-        if (!spoken) {
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (t: Throwable) {
+            Log.w(TAG, "greeting failed: ${t.message}")
+            false
+        }
+        if (!spoke) {
             Log.w(TAG, "greeting unavailable — falling back to the chime")
+            // A half-played greeting must not run into the recogniser: the
+            // timeout path is exactly the case where the engine may still be
+            // talking when the microphone opens.
+            withContext(Dispatchers.Main) { replyTts?.stop() }
             main.post { playWakeChime() }
         }
         delay(GREETING_TAIL_MS)
@@ -913,6 +956,14 @@ class WakeWordService : Service(), LifecycleEventObserver {
 
     private fun closePanel(resume: Boolean) {
         main.removeCallbacks(panelTimeout)
+        // [T-orion-wake-greeting] Invalidate any greeting still in flight: a
+        // hidden card must neither keep talking nor open the microphone later.
+        // Only the greeting is cut here — a spoken answer is left alone, as it
+        // was before, so closing the card mid-answer does not behead it.
+        panelGeneration++
+        if (greetJob?.isActive == true) runCatching { replyTts?.stop() }
+        greetJob?.cancel()
+        greetJob = null
         destroySpeech()
         panel?.hide()
         if (resume) paused = false
