@@ -2760,6 +2760,8 @@
     <string name="orion_wake_phrase_cancel">Cancel</string>
     <string name="orion_wake_panel_title">Orion · Mk II</string>
     <string name="orion_wake_panel_hint">Speak, sir. I am listening.</string>
+    <string name="orion_wake_panel_waking">At your service, sir.</string>
+    <string name="orion_wake_panel_greeting">Did you call, sir?</string>
     <string name="orion_wake_panel_listening">Listening, sir.</string>
     <string name="orion_wake_panel_processing">Processing, sir.</string>
     <string name="orion_wake_panel_heard">Understood, sir</string>

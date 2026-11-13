@@ -2034,6 +2034,8 @@
     <string name="orion_wake_phrase_cancel">Cancelar</string>
     <string name="orion_wake_panel_title">Orión · Mk II</string>
     <string name="orion_wake_panel_hint">Hable, señor. Le escucho.</string>
+    <string name="orion_wake_panel_waking">Le atiendo, señor.</string>
+    <string name="orion_wake_panel_greeting">¿Me llamó, señor?</string>
     <string name="orion_wake_panel_listening">Escuchando, señor.</string>
     <string name="orion_wake_panel_processing">Procesando, señor.</string>
     <string name="orion_wake_panel_heard">Entendido, señor</string>

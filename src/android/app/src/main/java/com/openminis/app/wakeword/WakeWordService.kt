@@ -128,6 +128,26 @@ class WakeWordService : Service(), LifecycleEventObserver {
         private const val RETRIGGER_MS = 6_000L
         private const val PANEL_TIMEOUT_MS = 12_000L
 
+        /**
+         * [T-orion-wake-greeting] Upper bound for «¿Me llamó, señor?».
+         *
+         * The greeting is short (~1,4 s). If the engine never reports the end
+         * of the utterance (OEM engine that ignores callbacks, audio focus
+         * stolen by a call), the panel must still start listening instead of
+         * hanging for the full minute that [TextToSpeechManager.awaitSpeechEnd]
+         * allows by default.
+         */
+        private const val GREETING_TIMEOUT_MS = 5_000L
+
+        /**
+         * [T-orion-wake-greeting] Silence kept between the greeting and the
+         * recogniser. `awaitSpeechEnd` returns on the engine's completion
+         * callback, which fires a little before the speaker is actually
+         * silent; without this tail the last syllable came back as the user's
+         * command ("señor" → "señora…").
+         */
+        private const val GREETING_TAIL_MS = 400L
+
         fun isEnabled(context: Context): Boolean =
             context.getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(KEY_ENABLED, false)
 
@@ -501,22 +521,24 @@ class WakeWordService : Service(), LifecycleEventObserver {
         if (now - lastTrigger < RETRIGGER_MS) return
         lastTrigger = now
         Log.w(TAG, "wake phrase detected (inApp=$appVisible)")
-        // Audible acknowledgement, JARVIS-style two-note chime. With the
-        // screen off the overlay is not visible, so this is the only way to
-        // tell the user the phrase landed.
-        playWakeChime()
         if (appVisible) {
             // [T-orion-wake-inapp] Orion is on screen, so an overlay would sit
             // on top of the app that is already showing a transcript. Open the
             // app's own voice card instead — the same one the assistant
             // gesture does — and stay quiet for a moment so its recogniser
             // gets the microphone first.
+            playWakeChime()
             paused = true
             main.post { openInAppVoiceInput() }
             main.postDelayed({ if (!chatRecording) paused = false }, 3_000)
             return
         }
         paused = true
+        // [T-orion-wake-greeting] The old acknowledgement was a two-note chime
+        // because speaking into the microphone the recogniser had just opened
+        // would be transcribed as the user's command. Now the panel greets
+        // first and listens afterwards, so Orion can answer the way JARVIS
+        // does: «¿Me llamó, señor?».
         main.post { openWakePanel() }
     }
 
@@ -534,10 +556,9 @@ class WakeWordService : Service(), LifecycleEventObserver {
     }
 
     /**
-     * Short acknowledgement tone. Kept separate from TTS: speaking a greeting
-     * into the microphone while the recognizer is starting would be decoded as
-     * the user's command. ToneGenerator runs on its own stream and is released
-     * right away.
+     * Short acknowledgement tone, used only when the spoken greeting cannot
+     * play (no TTS engine, engine still binding, replies muted at the OS).
+     * ToneGenerator runs on its own stream and is released right away.
      */
     private fun playWakeChime() {
         try {
@@ -554,6 +575,11 @@ class WakeWordService : Service(), LifecycleEventObserver {
         val canRecognize = SpeechRecognizer.isRecognitionAvailable(this)
         if (!canOverlay || !canRecognize) {
             Log.w(TAG, "panel unavailable (overlay=$canOverlay asr=$canRecognize); opening voice chat")
+            // [T-orion-wake-greeting] Nothing will resume the detector after
+            // this path used to leave it paused for good. The chat's own voice
+            // input is protected by [chatRecording], so handing the mic back is
+            // safe.
+            paused = false
             openAssistActivity()
             return
         }
@@ -563,13 +589,62 @@ class WakeWordService : Service(), LifecycleEventObserver {
             getString(R.string.orion_wake_panel_title),
             getString(R.string.orion_wake_panel_hint),
         )
-        controller.setState(WakePanelController.State.LISTENING)
-        startPanelSpeech()
+        // [T-orion-wake-greeting] Greet first, listen afterwards. The orb goes
+        // to PROCESSING while the voice speaks so the card does not claim to
+        // be listening before the microphone is actually open.
+        controller.setState(WakePanelController.State.PROCESSING)
+        controller.setStatus(getString(R.string.orion_wake_panel_waking))
         main.removeCallbacks(panelTimeout)
-        main.postDelayed(panelTimeout, PANEL_TIMEOUT_MS)
+        scope.launch {
+            greetOnWake()
+            main.post {
+                // The card may have been dismissed (timeout, back, another
+                // trigger) while Orion was still saying hello.
+                if (panel?.isShowing == true) startPanelSpeech()
+            }
+        }
+    }
+
+    /**
+     * [T-orion-wake-greeting] Say «¿Me llamó, señor?» the way JARVIS does,
+     * then get out of the microphone's way.
+     *
+     * The greeting and the recogniser cannot overlap: whatever the speaker
+     * emits while the recogniser is running comes back as the user's command,
+     * which is why the first version of this flow only played a tone. The
+     * order is therefore fixed — speak, wait for the engine to finish, keep a
+     * short tail of silence, and only then open the microphone (see
+     * [startPanelSpeech], called after this returns).
+     *
+     * If the engine is unavailable the panel still has to work, so the old
+     * two-note chime is the fallback acknowledgement.
+     */
+    private suspend fun greetOnWake() {
+        val spoken = runCatching {
+            val manager = withContext(Dispatchers.Main) {
+                val existing = replyTts ?: TextToSpeechManager().also { replyTts = it }
+                if (!existing.isInitialized) {
+                    existing.init(this@WakeWordService)
+                    existing.awaitReady()
+                }
+                existing
+            }
+            if (!manager.isInitialized) return@runCatching false
+            withContext(Dispatchers.Main) {
+                manager.speak(getString(R.string.orion_wake_panel_greeting))
+            }
+            manager.awaitSpeechEnd(GREETING_TIMEOUT_MS)
+        }.getOrDefault(false)
+        if (!spoken) {
+            Log.w(TAG, "greeting unavailable — falling back to the chime")
+            main.post { playWakeChime() }
+        }
+        delay(GREETING_TAIL_MS)
     }
 
     private fun startPanelSpeech() {
+        main.removeCallbacks(panelTimeout)
+        main.postDelayed(panelTimeout, PANEL_TIMEOUT_MS)
         destroySpeech()
         val recognizer = try {
             SpeechRecognizer.createSpeechRecognizer(this)
