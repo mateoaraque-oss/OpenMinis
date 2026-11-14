@@ -38,6 +38,8 @@ import com.openminis.app.MinisApp
 import com.openminis.app.R
 import com.openminis.app.debug.HeadlessChatRunner
 import com.openminis.app.deeplink.DeepLinkCoordinator
+import com.openminis.app.speech.KokoroModelDownloader
+import com.openminis.app.speech.KokoroVoice
 import com.openminis.app.speech.RecognitionState
 import com.openminis.app.speech.SpeechRecognitionManager
 import com.openminis.app.speech.TextToSpeechManager
@@ -646,7 +648,12 @@ class WakeWordService : Service(), LifecycleEventObserver {
             Log.w(TAG, "voice replies disabled — greeting stays silent")
             return
         }
-        val spoke = try {
+        // [T-orion-kokoro-tts] The offline Kokoro male Spanish voice first; the
+        // system engine below is the fallback while the model downloads.
+        val greeting = getString(R.string.orion_wake_panel_greeting)
+        val kokoroSpoke = runCatching { speakViaKokoro(greeting) }
+            .getOrDefault(false)
+        val spoke = kokoroSpoke || try {
             val manager = withContext(Dispatchers.Main) {
                 val existing = replyTts ?: TextToSpeechManager().also { replyTts = it }
                 if (!existing.isInitialized) {
@@ -673,7 +680,7 @@ class WakeWordService : Service(), LifecycleEventObserver {
                 // then reports success on the spot. Treating that as "spoke"
                 // left the wake silent — no greeting and, worse, no chime.
                 val accepted = withContext(Dispatchers.Main) {
-                    manager.speak(getString(R.string.orion_wake_panel_greeting))
+                    manager.speak(greeting)
                     manager.isSpeaking.value
                 }
                 accepted && manager.awaitSpeechEnd(GREETING_TIMEOUT_MS)
@@ -904,6 +911,10 @@ class WakeWordService : Service(), LifecycleEventObserver {
             delay(1_200)
             return
         }
+        // [T-orion-kokoro-tts] The offline Kokoro male Spanish voice first —
+        // it is the JARVIS voice. The system engine is only the fallback when
+        // the model has not finished its one-time download.
+        if (speakViaKokoro(text)) return
         val manager = withContext(Dispatchers.Main) {
             val existing = replyTts ?: TextToSpeechManager().also { replyTts = it }
             if (!existing.isInitialized) {
@@ -929,6 +940,55 @@ class WakeWordService : Service(), LifecycleEventObserver {
         }
         withContext(Dispatchers.Main) { manager.speak(text) }
         manager.awaitSpeechEnd(timeoutMs = 15_000L + text.length * 110L)
+    }
+
+    /**
+     * [T-orion-kokoro-tts] Speak through the offline Kokoro engine. Returns
+     * false — letting the caller fall back to the system TTS — when the model
+     * has not been downloaded yet, or synthesis fails for any reason.
+     */
+    private suspend fun speakViaKokoro(text: String): Boolean {
+        KokoroVoice.init(applicationContext)
+        if (!KokoroVoice.isModelReady()) {
+            maybeStartKokoroDownload()
+            maybeExtractKokoroArchive()
+            return false
+        }
+        return try {
+            KokoroVoice.speak(text)
+        } catch (cancel: CancellationException) {
+            throw cancel
+        } catch (t: Throwable) {
+            Log.w(TAG, "kokoro speak failed: ${t.message}")
+            false
+        }
+    }
+
+    /** One-time: fetch the ~130 MB Kokoro voice model via DownloadManager. */
+    private var kokoroDownloadStarted = false
+    private fun maybeStartKokoroDownload() {
+        if (kokoroDownloadStarted) return
+        kokoroDownloadStarted = true
+        runCatching { KokoroVoice.startDownload() }
+            .onSuccess { id -> Log.i(TAG, "kokoro model download enqueued id=$id") }
+            .onFailure { Log.w(TAG, "kokoro download enqueue failed: ${it.message}") }
+    }
+
+    /** One-time: unpack the downloaded archive in the background. */
+    private var kokoroExtractStarted = false
+    private fun maybeExtractKokoroArchive() {
+        if (kokoroExtractStarted) return
+        kokoroExtractStarted = true
+        if (KokoroModelDownloader.status(this) != KokoroModelDownloader.Status.NEEDS_EXTRACT) {
+            kokoroExtractStarted = false
+            return
+        }
+        scope.launch {
+            val ok = runCatching { KokoroModelDownloader.extract(this@WakeWordService) }
+                .getOrElse { Log.w(TAG, "kokoro extract crashed: ${it.message}"); false }
+            Log.i(TAG, "kokoro model extract ok=$ok")
+            kokoroExtractStarted = false
+        }
     }
 
     /** Legacy path: hand the transcript to a full voice chat. */
@@ -981,7 +1041,12 @@ class WakeWordService : Service(), LifecycleEventObserver {
         // Only the greeting is cut here — a spoken answer is left alone, as it
         // was before, so closing the card mid-answer does not behead it.
         panelGeneration++
-        if (greetJob?.isActive == true) runCatching { replyTts?.stop() }
+        if (greetJob?.isActive == true) {
+            runCatching { replyTts?.stop() }
+            // [T-orion-kokoro-tts] The greeting may be playing on the Kokoro
+            // engine instead of the system TTS; cut that too.
+            KokoroVoice.stop()
+        }
         greetJob?.cancel()
         greetJob = null
         destroySpeech()

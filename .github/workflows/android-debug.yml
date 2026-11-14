@@ -209,6 +209,21 @@ jobs:
           echo "--- vosk aar ---"
           ls -lh src/android/app/libs/vosk-android.aar
 
+      - name: Bundle sherpa-onnx AAR
+        run: |
+          # [T-orion-kokoro-tts] Prebuilt Android AAR from release v2.0.1 with
+          # libsherpa-onnx-jni.so and the com.k2fsa.sherpa.onnx Kotlin API
+          # (OfflineTts). The static-link-onnxruntime variant is required:
+          # the APK already ships libonnxruntime.so via the VAD library, and
+          # a second copy of that .so can break the JNI wrapper. Apache-2.0.
+          # Same vendored pattern as vosk-android above.
+          mkdir -p src/android/app/libs
+          curl -fL --retry 3 --retry-delay 5 \
+            -o src/android/app/libs/sherpa-onnx.aar \
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/v2.0.1/sherpa-onnx-static-link-onnxruntime-2.0.1.aar"
+          echo "--- sherpa aar ---"
+          ls -lh src/android/app/libs/sherpa-onnx.aar
+
       - name: Build rclone AAR
         run: |
           chmod +x deps/build_rclone_android.sh

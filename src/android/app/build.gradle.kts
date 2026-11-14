@@ -53,8 +53,8 @@ android {
         applicationId = "com.openminis.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 59
-        versionName = "1.37"
+        versionCode = 60
+        versionName = "1.38"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -475,6 +475,20 @@ dependencies {
     // desktop jar and lose the native bridge Vosk needs.
     implementation(group = "", name = "vosk-android", ext = "aar")
     implementation("net.java.dev.jna:jna:5.13.0@aar")
+
+    // [T-orion-kokoro-tts] Kokoro offline TTS via sherpa-onnx. The prebuilt
+    // Android AAR (release v2.0.1, Apache-2.0) carries libsherpa-onnx-jni.so
+    // plus the com.k2fsa.sherpa.onnx Kotlin API (OfflineTts). The
+    // static-link-onnxruntime variant is required: the APK already ships
+    // libonnxruntime.so from the VAD library above, and a second copy with a
+    // different version can break that JNI wrapper. Downloaded by CI into
+    // app/libs/, same vendored pattern as vosk-android.
+    implementation(group = "", name = "sherpa-onnx", ext = "aar")
+
+    // [T-orion-kokoro-tts] tar.bz2 extraction of the one-time Kokoro model
+    // download (kokoro-int8-multi-lang-v1_0). BZip2 is built into
+    // commons-compress; nothing else in the app can read tar streams.
+    implementation("org.apache.commons:commons-compress:1.27.1")
 
     // rclone, via its official gomobile binding, for backup destinations
     // (SMB / WebDAV / SFTP / S3 / FTP). Build it with

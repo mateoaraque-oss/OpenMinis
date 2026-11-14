@@ -63,6 +63,10 @@ class ReadAloudPlayer(context: Context) {
 
     private val appContext = context.applicationContext
     private val system = TextToSpeechManager().also { it.init(appContext) }
+    // [T-orion-kokoro-tts] Offline Kokoro voice (sherpa-onnx). Shared app-scoped
+    // engine; tried before the system engine so replies never sound like a
+    // "chica" voice.
+    init { KokoroVoice.init(appContext) }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val queue = Channel<String>(Channel.UNLIMITED)
@@ -417,6 +421,11 @@ class ReadAloudPlayer(context: Context) {
                 }
             if (ok) return
         }
+        // [T-orion-kokoro-tts] Offline Kokoro voice before the system engine:
+        // natural male Spanish (em_alex), no network, no API key. Falls
+        // through to the system TTS if the model isn't downloaded yet.
+        if (ownsCapsule()) VoiceOutputState.activeModelLabel.value = "Kokoro"
+        if (runCatching { KokoroVoice.speak(text) }.getOrNull() == true) return
         if (ownsCapsule()) VoiceOutputState.activeModelLabel.value = null // system engine
         if (!speakViaSystem(text)) {
             // [T-android-tts-silent-blackhole] Terminal state: the provider path
