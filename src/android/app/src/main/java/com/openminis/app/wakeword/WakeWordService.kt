@@ -252,13 +252,14 @@ class WakeWordService : Service(), LifecycleEventObserver {
     @Volatile private var paused = false
 
     /**
-     * [T-orion-wake-inapp] True while Orion itself is on screen.
+     * [T-orion-wake-same-card] True while Orion itself is on screen.
      *
      * The detector used to stop completely whenever the app was visible, so
-     * saying the phrase inside the chat did nothing. It now keeps listening:
-     * the wake is handed to the app's own voice card (the one the assistant
-     * gesture opens) instead of the floating overlay, which would sit on top
-     * of the very screen that should show the transcript.
+     * saying the phrase inside the chat did nothing. It now keeps listening
+     * and shows the very same floating card it shows over any other app —
+     * there is no separate in-app assistant UI anymore. The only concession
+     * to being foreground is the microphone: the chat's own voice input wins
+     * it ([chatRecording]) and the detector waits.
      */
     @Volatile private var appVisible = false
 
@@ -383,13 +384,14 @@ class WakeWordService : Service(), LifecycleEventObserver {
     override fun onStateChanged(source: LifecycleOwner, event: Lifecycle.Event) {
         when (event) {
             Lifecycle.Event.ON_START -> {
-                // [T-orion-wake-inapp] Was: stop listening entirely. That made
-                // the phrase dead inside Orion. Now the detector keeps running
-                // and only yields the mic to the chat's own voice input (see
-                // [chatRecording]); a match here opens the in-app voice card
-                // rather than the overlay.
+                // [T-orion-wake-same-card] Was: stop listening entirely, then:
+                // keep listening but hand the wake to the in-app voice card and
+                // close the overlay on entry. Now there is a single card — the
+                // floating panel — and it works over Orion itself too, so an
+                // app coming to the foreground must not behead a card the user
+                // just invoked. The detector only yields the mic to the chat's
+                // own voice input ([chatRecording]).
                 appVisible = true
-                if (panel?.isShowing == true) main.post { closePanel(resume = false) }
                 Log.w(TAG, "app in foreground (in-app wake)")
             }
             Lifecycle.Event.ON_STOP -> {
@@ -534,18 +536,12 @@ class WakeWordService : Service(), LifecycleEventObserver {
         if (now - lastTrigger < RETRIGGER_MS) return
         lastTrigger = now
         Log.w(TAG, "wake phrase detected (inApp=$appVisible)")
-        if (appVisible) {
-            // [T-orion-wake-inapp] Orion is on screen, so an overlay would sit
-            // on top of the app that is already showing a transcript. Open the
-            // app's own voice card instead — the same one the assistant
-            // gesture does — and stay quiet for a moment so its recogniser
-            // gets the microphone first.
-            playWakeChime()
-            paused = true
-            main.post { openInAppVoiceInput() }
-            main.postDelayed({ if (!chatRecording) paused = false }, 3_000)
-            return
-        }
+        // [T-orion-wake-same-card] One card everywhere: the floating panel is
+        // no longer reserved for the background. Inside Orion it floats over
+        // the chat exactly like it does over any other app, so invoking the
+        // assistant always looks and behaves the same. The chat's own recorder
+        // (if any) yields the microphone first — two recognisers in one
+        // process would fight for the mic and one of them gets silence.
         paused = true
         // [T-orion-wake-greeting] The old acknowledgement was a two-note chime
         // because speaking into the microphone the recogniser had just opened
@@ -553,19 +549,6 @@ class WakeWordService : Service(), LifecycleEventObserver {
         // first and listens afterwards, so Orion can answer the way JARVIS
         // does: «¿Me llamó, señor?».
         main.post { openWakePanel() }
-    }
-
-    /** [T-orion-wake-inapp] The assistant's own voice-chat entry point. */
-    private fun openInAppVoiceInput() {
-        val intent = Intent(this, MainActivity::class.java)
-            .setAction(Intent.ACTION_ASSIST)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        try {
-            startActivity(intent)
-        } catch (t: Throwable) {
-            Log.w(TAG, "cannot open the in-app voice input: ${t.message}")
-            paused = false
-        }
     }
 
     /**
@@ -585,6 +568,11 @@ class WakeWordService : Service(), LifecycleEventObserver {
     }
 
     private fun openWakePanel() {
+        // [T-orion-wake-same-card] The chat may have started recording between
+        // the detection and this call (it is what [chatRecording] watches);
+        // its recogniser must release the mic before the panel's own opens,
+        // and this is a no-op when nothing is recording.
+        SpeechRecognitionManager.stopRecording()
         val canOverlay = Settings.canDrawOverlays(this)
         val canRecognize = SpeechRecognizer.isRecognitionAvailable(this)
         if (!canOverlay || !canRecognize) {
@@ -983,6 +971,15 @@ class WakeWordService : Service(), LifecycleEventObserver {
             kokoroExtractStarted = false
             return
         }
+        // [T-orion-kokoro-extract] The unpack takes minutes of pure I/O and the
+        // Nubia's lowmemorykiller killed the process mid-extraction once,
+        // leaving a half-written model. In the field the service is already a
+        // microphone foreground service so this is a no-op; the debug harness
+        // (`am startservice` without the mic loop) is the case that needs the
+        // promotion, and where Android may still refuse it — hence the catch:
+        // a rejected foreground start must not cancel the extraction itself.
+        runCatching { startForegroundNotification() }
+            .onFailure { Log.w(TAG, "extract foreground promotion refused: ${it.message}") }
         scope.launch {
             val ok = runCatching { KokoroModelDownloader.extract(this@WakeWordService) }
                 .getOrElse { Log.w(TAG, "kokoro extract crashed: ${it.message}"); false }

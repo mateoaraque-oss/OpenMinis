@@ -2450,7 +2450,7 @@ class ChatViewModel(
             val instance = entry?.providerInstanceId?.let { providerRepository.instance(it) }
             val instanceLabel = instance?.label
             val currentModelProvider = currentModel?.provider
-            val result = instanceLabel?.equals(
+            return instanceLabel?.equals(
                 com.openminis.app.localmodel.LocalModelProvider.LABEL,
                 ignoreCase = true,
             ) == true ||
@@ -2458,15 +2458,6 @@ class ChatViewModel(
                     com.openminis.app.localmodel.LocalModelProvider.LABEL,
                     ignoreCase = true,
                 ) == true
-            if (!result) {
-                AppLogger.warning(
-                    TAG,
-                    "isLocalModelSelected=false entryId=$entryId entryProvider=${entry?.baseModel?.provider} " +
-                        "instanceLabel=$instanceLabel currentModelProvider=$currentModelProvider " +
-                        "currentModelId=${currentModel?.id}",
-                )
-            }
-            return result
         }
 
     /**
