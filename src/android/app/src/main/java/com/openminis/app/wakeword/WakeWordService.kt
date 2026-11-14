@@ -659,8 +659,12 @@ class WakeWordService : Service(), LifecycleEventObserver {
                 false
             } else {
                 // [T-orion-wake-greeting] JARVIS voice: deeper pitch and slower
-                // rate so the greeting doesn't sound like a "chica" voice.
+                // rate so the greeting doesn't sound like a "chica" voice. Clear
+                // any previously-picked system voice (e.g. a female one saved in
+                // VoiceOutputState) so applyBestVoice picks the best es-ES voice
+                // actually installed on this device.
                 withContext(Dispatchers.Main) {
+                    manager.preferredVoiceName = null
                     manager.speechPitch = 0.85f
                     manager.speechRate = 0.95f
                 }
@@ -914,8 +918,12 @@ class WakeWordService : Service(), LifecycleEventObserver {
             return
         }
         // [T-orion-wake-greeting] JARVIS voice: deeper pitch and slower rate so
-        // the spoken reply doesn't sound like a "chica" voice.
+        // the spoken reply doesn't sound like a "chica" voice. Clear any
+        // previously-picked system voice (e.g. a female one saved in
+        // VoiceOutputState) so applyBestVoice picks the best es-ES voice
+        // actually installed on this device.
         withContext(Dispatchers.Main) {
+            manager.preferredVoiceName = null
             manager.speechPitch = 0.85f
             manager.speechRate = 0.95f
         }

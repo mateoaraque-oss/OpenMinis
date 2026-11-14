@@ -585,6 +585,13 @@ class TextToSpeechManager : TextToSpeech.OnInitListener {
                 "voice=${best.name} quality=${best.quality} " +
                     "locale=${best.locale.toLanguageTag()} offline=${!best.isNetworkConnectionRequired}",
             )
+            // [T-orion-tts-diag] Log every candidate so we can see what's installed
+            // and whether a male es-ES voice exists on this device.
+            Log.i(
+                TAG,
+                "tts-diag candidates for $tag:" +
+                    installed.map { v -> "  ${v.name} quality=${v.quality} net=${v.isNetworkConnectionRequired}" }.toTypedArray().joinToString("\n")
+            )
         } else {
             Log.w(TAG, "setVoice(${best.name}) rejected (rc=$rc) — keeping engine default")
         }
