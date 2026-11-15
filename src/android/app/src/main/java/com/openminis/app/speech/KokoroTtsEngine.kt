@@ -49,7 +49,7 @@ object KokoroVoice {
     // [T-orion-voice-volume] La voz masculina española de piper se oye baja en
     // este HAL UNISOC; una ganancia de salida moderada la lleva a un nivel
     // cómodo sin distorsionar (se clampea en [-1, 1]).
-    private const val OUTPUT_GAIN = 3.0f
+    private const val OUTPUT_GAIN = 2.5f
 
     private var context: Context? = null
     private var tts: OfflineTts? = null
