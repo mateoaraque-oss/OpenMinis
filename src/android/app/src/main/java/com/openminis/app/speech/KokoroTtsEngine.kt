@@ -218,12 +218,12 @@ object KokoroVoice {
     }
 
     private fun openTrack(modelRate: Int): PlaySession? {
-        tryOpenTrack(modelRate, AudioFormat.ENCODING_PCM_FLOAT)?.let { return it }
-        tryOpenTrack(modelRate, AudioFormat.ENCODING_PCM_16BIT)?.let { return it }
-        return tryOpenTrack(48_000, AudioFormat.ENCODING_PCM_16BIT)
+        tryOpenTrack(modelRate, AudioFormat.ENCODING_PCM_FLOAT, modelRate)?.let { return it }
+        tryOpenTrack(modelRate, AudioFormat.ENCODING_PCM_16BIT, modelRate)?.let { return it }
+        return tryOpenTrack(48_000, AudioFormat.ENCODING_PCM_16BIT, modelRate)
     }
 
-    private fun tryOpenTrack(rate: Int, encoding: Int): PlaySession? = try {
+    private fun tryOpenTrack(rate: Int, encoding: Int, modelRate: Int): PlaySession? = try {
         val bytesPerSample = if (encoding == AudioFormat.ENCODING_PCM_FLOAT) 4 else 2
         var buf = AudioTrack.getMinBufferSize(rate, AudioFormat.CHANNEL_OUT_MONO, encoding)
         if (buf <= 0) {
