@@ -5,6 +5,7 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
+import android.util.Log
 import com.k2fsa.sherpa.onnx.OfflineTts
 import com.k2fsa.sherpa.onnx.OfflineTtsConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
@@ -137,9 +138,12 @@ object KokoroVoice {
             try {
                 withContext(Dispatchers.Default) {
                     val id = generation.incrementAndGet()
-                    val t = openTrack(engine.sampleRate())
-                    track = t
-                    t.play()
+                    val session = openTrack(engine.sampleRate()) ?: run {
+                        AppLogger.error(TAG, "No playable AudioTrack config for this HAL")
+                        return@withContext false
+                    }
+                    track = session.track
+                    session.track.play()
                     // [T-orion-kokoro-jni-callback] A plain lambda here desugars
                     // into a D8 synthetic class whose only `invoke` takes
                     // (Object) — sherpa's native side looks up the concrete
@@ -165,7 +169,7 @@ object KokoroVoice {
                             override fun invoke(samples: FloatArray): Int {
                                 // Return 1 to keep generating, 0 to stop.
                                 if (generation.get() != id) return 0
-                                t.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
+                                writeChunk(session, samples)
                                 return 1
                             }
                         },
@@ -173,11 +177,11 @@ object KokoroVoice {
                     if (generation.get() == id) {
                         // Callbacks covered the whole stream; let the track
                         // drain what was already written.
-                        val silence = FloatArray(sampleRate / 10)
-                        t.write(silence, 0, silence.size, AudioTrack.WRITE_BLOCKING)
+                        val silence = FloatArray(session.modelRate / 10)
+                        writeChunk(session, silence)
                     }
-                    t.stop()
-                    t.release()
+                    session.track.stop()
+                    session.track.release()
                     track = null
                     val ok = audio.samples.isNotEmpty() && generation.get() == id
                     if (!ok) AppLogger.info(TAG, "Kokoro speak cancelled")
@@ -197,20 +201,89 @@ object KokoroVoice {
         releaseTrack()
     }
 
-    private fun openTrack(rate: Int): AudioTrack {
-        val buf = AudioTrack.getMinBufferSize(
-            rate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_FLOAT,
-        ).coerceAtLeast(rate / 2) // ≥0.5 s: keeps WRITE_BLOCKING smooth mid-word
+    /**
+     * [T-orion-piper-tts] Playback config chosen defensively. The Nubia's
+     * UNISOC audio HAL throws IllegalArgumentException("Invalid audio buffer
+     * size") for float PCM at 22050 Hz (piper's rate) — Kokoro's 24000 Hz
+     * float worked, so the failure was invisible until the voice swap. Order:
+     * float at the model rate → 16-bit at the model rate → 16-bit at 48 kHz
+     * with in-callback resampling.
+     */
+    private class PlaySession(
+        val track: AudioTrack,
+        val encoding: Int,
+        val modelRate: Int,
+    ) {
+        val trackRate: Int = track.sampleRate
+    }
+
+    private fun openTrack(modelRate: Int): PlaySession? {
+        tryOpenTrack(modelRate, AudioFormat.ENCODING_PCM_FLOAT)?.let { return it }
+        tryOpenTrack(modelRate, AudioFormat.ENCODING_PCM_16BIT)?.let { return it }
+        return tryOpenTrack(48_000, AudioFormat.ENCODING_PCM_16BIT)
+    }
+
+    private fun tryOpenTrack(rate: Int, encoding: Int): PlaySession? = try {
+        val bytesPerSample = if (encoding == AudioFormat.ENCODING_PCM_FLOAT) 4 else 2
+        var buf = AudioTrack.getMinBufferSize(rate, AudioFormat.CHANNEL_OUT_MONO, encoding)
+        if (buf <= 0) {
+            Log.w(TAG, "getMinBufferSize($rate, enc=$encoding) failed — using 0.5 s fallback")
+            buf = rate / 2 * bytesPerSample // 0.5 s: keeps WRITE_BLOCKING smooth
+        }
         val attrs = AudioAttributes.Builder()
             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
             .setUsage(AudioAttributes.USAGE_ASSISTANT)
             .build()
         val format = AudioFormat.Builder()
-            .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
+            .setEncoding(encoding)
             .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
             .setSampleRate(rate)
             .build()
-        return AudioTrack(attrs, format, buf, AudioTrack.MODE_STREAM, AudioManager.AUDIO_SESSION_ID_GENERATE)
+        val t = AudioTrack(attrs, format, buf, AudioTrack.MODE_STREAM, AudioManager.AUDIO_SESSION_ID_GENERATE)
+        if (t.state != AudioTrack.STATE_INITIALIZED) {
+            Log.w(TAG, "AudioTrack($rate, enc=$encoding) uninitialized (state=${t.state})")
+            t.release()
+            null
+        } else {
+            Log.w(TAG, "AudioTrack playing rate=$rate enc=$encoding")
+            PlaySession(t, encoding, modelRate)
+        }
+    } catch (t: Throwable) {
+        Log.w(TAG, "AudioTrack($rate, enc=$encoding) failed: ${t.javaClass.simpleName}: ${t.message}")
+        null
+    }
+
+    /** Write one generated chunk, converting/resampling to the track format. */
+    private fun writeChunk(session: PlaySession, samples: FloatArray) {
+        if (session.encoding == AudioFormat.ENCODING_PCM_FLOAT) {
+            session.track.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
+            return
+        }
+        val resampled = if (session.trackRate != session.modelRate) {
+            resample(samples, session.modelRate, session.trackRate)
+        } else {
+            samples
+        }
+        val shorts = ShortArray(resampled.size) { i ->
+            (resampled[i].coerceIn(-1f, 1f) * 32767f).toInt().toShort()
+        }
+        session.track.write(shorts, 0, shorts.size, AudioTrack.WRITE_BLOCKING)
+    }
+
+    /** Naive linear-interpolation resampler — speech quality is fine with it. */
+    private fun resample(samples: FloatArray, from: Int, to: Int): FloatArray {
+        if (from == to || samples.isEmpty()) return samples
+        val outLen = (samples.size.toLong() * to / from).toInt()
+        val out = FloatArray(outLen)
+        for (i in 0 until outLen) {
+            val pos = i * from.toDouble() / to
+            val i0 = pos.toInt()
+            val frac = (pos - i0).toFloat()
+            val a = samples[i0.coerceAtMost(samples.size - 1)]
+            val b = samples[(i0 + 1).coerceAtMost(samples.size - 1)]
+            out[i] = a + (b - a) * frac
+        }
+        return out
     }
 
     private fun releaseTrack() {
