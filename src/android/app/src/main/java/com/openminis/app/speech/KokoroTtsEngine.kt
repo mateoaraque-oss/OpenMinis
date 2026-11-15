@@ -153,10 +153,9 @@ object KokoroVoice {
                         callback = object : (FloatArray) -> Int {
                             override fun invoke(samples: FloatArray): Int {
                                 // Return 1 to keep generating, 0 to stop.
-                                if (generation.get() == id) {
-                                    t.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
-                                    1
-                                } else 0
+                                if (generation.get() != id) return 0
+                                t.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
+                                return 1
                             }
                         },
                     )
