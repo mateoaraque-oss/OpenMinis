@@ -602,9 +602,11 @@ class WakeWordService : Service(), LifecycleEventObserver {
         controller.setState(WakePanelController.State.PROCESSING)
         controller.setStatus(getString(R.string.orion_wake_panel_waking))
         main.removeCallbacks(panelTimeout)
-        // The greeting phase is bounded too, so a card that never gets to listen
-        // (engine stuck, call stealing audio focus) still closes on its own.
-        main.postDelayed(panelTimeout, PANEL_TIMEOUT_MS)
+        // No hay conteo de tarjeta durante el greeting: la tarjeta debe seguir
+        // viva hasta que el micrófono se abra. El conteo real empieza en
+        // startPanelSpeech (después de hablar). Red de seguridad de 30 s por si
+        // el greeting se queda colgado y nunca entrega el micrófono.
+        main.postDelayed(panelTimeout, 30_000L)
         greetJob?.cancel()
         val generation = ++panelGeneration
         greetJob = scope.launch {
@@ -713,6 +715,19 @@ class WakeWordService : Service(), LifecycleEventObserver {
             return
         }
         speech = recognizer
+        // El intent se construye antes del listener para que onError pueda
+        // reutilizarlo y reintentar startListening ante ERROR_CLIENT (7),
+        // que es lo que provoca "no me deja hablar y la tarjeta desaparece".
+        val listenIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "es-ES")
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1_200L)
+        }
+        var listeningRetried = false
         recognizer.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {
                 panel?.setState(WakePanelController.State.LISTENING)
@@ -737,6 +752,21 @@ class WakeWordService : Service(), LifecycleEventObserver {
             override fun onError(error: Int) {
                 Log.w(TAG, "panel speech error $error")
                 main.removeCallbacks(panelTimeout)
+                // ERROR_CLIENT (7) es un fallo transitorio del reconocedor:
+                // reintentar startListening una vez en lugar de cerrar la
+                // tarjeta, que es lo que provoca "no me deja hablar".
+                if (error == SpeechRecognizer.ERROR_CLIENT && !listeningRetried) {
+                    listeningRetried = true
+                    main.postDelayed({
+                        try {
+                            recognizer.startListening(listenIntent)
+                        } catch (t: Throwable) {
+                            Log.w(TAG, "startListening retry failed: ${t.message}")
+                            closePanel(resume = true)
+                        }
+                    }, 500)
+                    return
+                }
                 if (error == SpeechRecognizer.ERROR_NO_MATCH ||
                     error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
                 ) {
@@ -784,17 +814,8 @@ class WakeWordService : Service(), LifecycleEventObserver {
             override fun onEvent(eventType: Int, params: Bundle?) = Unit
         })
 
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "es-ES")
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-            putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1_200L)
-        }
         try {
-            recognizer.startListening(intent)
+            recognizer.startListening(listenIntent)
         } catch (t: Throwable) {
             Log.w(TAG, "startListening failed: ${t.message}")
             panel?.setState(WakePanelController.State.ERROR)

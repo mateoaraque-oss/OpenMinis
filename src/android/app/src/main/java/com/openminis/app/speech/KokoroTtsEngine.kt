@@ -49,7 +49,7 @@ object KokoroVoice {
     // [T-orion-voice-volume] La voz masculina española de piper se oye baja en
     // este HAL UNISOC; una ganancia de salida moderada la lleva a un nivel
     // cómodo sin distorsionar (se clampea en [-1, 1]).
-    private const val OUTPUT_GAIN = 2.0f
+    private const val OUTPUT_GAIN = 3.0f
 
     private var context: Context? = null
     private var tts: OfflineTts? = null
@@ -237,7 +237,7 @@ object KokoroVoice {
 
     private fun tryOpenTrack(rate: Int, encoding: Int, modelRate: Int): PlaySession? = try {
         val bytesPerSample = if (encoding == AudioFormat.ENCODING_PCM_FLOAT) 4 else 2
-        val floor = rate / 2 * bytesPerSample // ≥0.5 s: evita underruns/estática
+        val floor = rate * bytesPerSample // ≥1 s: evita underruns/estática
         var buf = AudioTrack.getMinBufferSize(rate, AudioFormat.CHANNEL_OUT_MONO, encoding)
         if (buf <= 0) {
             Log.w(TAG, "getMinBufferSize($rate, enc=$encoding) failed — using 0.5 s fallback")
