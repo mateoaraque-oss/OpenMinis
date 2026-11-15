@@ -298,6 +298,11 @@ class WakeWordService : Service(), LifecycleEventObserver {
         super.onCreate()
         createChannel()
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)
+        // [T-orion-voice-preload] Precarga el motor de voz al arrancar el
+        // servicio para que el primer saludo no tarde ~5 s en cargar el modelo.
+        scope.launch {
+            runCatching { KokoroVoice.preload() }
+        }
         // [T-orion-wake-inapp] Follow the chat's voice input so the two
         // recorders never run at the same time.
         scope.launch {
@@ -605,10 +610,15 @@ class WakeWordService : Service(), LifecycleEventObserver {
         greetJob = scope.launch {
             greetOnWake()
             main.post {
-                // [T-orion-wake-greeting] Only the greeting of the card that is
-                // still on screen may open the microphone: the card may have
-                // been dismissed (timeout, back, another trigger) while Orion
-                // was still saying hello.
+                // [T-orion-wake-greeting] Renueva la vida de la tarjeta ahora
+                // que el saludo terminó, para que el micrófono tenga el
+                // PANEL_TIMEOUT_MS completo y no caduque mientras saluda.
+                main.removeCallbacks(panelTimeout)
+                main.postDelayed(panelTimeout, PANEL_TIMEOUT_MS)
+                // [T-orion-wake-greeting] Solo el saludo de la tarjeta que aún
+                // está en pantalla puede abrir el micrófono: la tarjeta pudo
+                // haberse descartado (timeout, retroceso, otro disparo) mientras
+                // Orion aún decía hola.
                 if (generation == panelGeneration && panel?.isShowing == true) startPanelSpeech()
             }
         }

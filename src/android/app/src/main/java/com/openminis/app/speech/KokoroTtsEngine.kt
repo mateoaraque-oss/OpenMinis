@@ -46,6 +46,11 @@ object KokoroVoice {
 
     private const val TAG = "OrionKokoroTts"
 
+    // [T-orion-voice-volume] La voz masculina española de piper se oye baja en
+    // este HAL UNISOC; una ganancia de salida moderada la lleva a un nivel
+    // cómodo sin distorsionar (se clampea en [-1, 1]).
+    private const val OUTPUT_GAIN = 2.0f
+
     private var context: Context? = null
     private var tts: OfflineTts? = null
     private var track: AudioTrack? = null
@@ -68,6 +73,13 @@ object KokoroVoice {
 
     /** Enqueue the one-time model download. */
     fun startDownload(): Long? = context?.let { KokoroModelDownloader.startDownload(it) }
+
+    /**
+     * Precarga el motor de voz (modelo + nativo) para que el primer saludo no
+     * pague los segundos de carga. Debe llamarse desde un scope propio (p. ej.
+     * el del servicio de despertar) para no bloquear el hilo que lo invoque.
+     */
+    suspend fun preload() = ensureLoaded()
 
     /**
      * Lazy-load the model. Safe to call repeatedly; returns false when the
@@ -100,7 +112,7 @@ object KokoroVoice {
                             // the per-language data shipped in the package.
                             dataDir = java.io.File(dir, "espeak-ng-data").absolutePath,
                         ),
-                        numThreads = 2,
+                        numThreads = 4,
                         debug = false,
                         provider = "cpu",
                     ),
@@ -225,10 +237,13 @@ object KokoroVoice {
 
     private fun tryOpenTrack(rate: Int, encoding: Int, modelRate: Int): PlaySession? = try {
         val bytesPerSample = if (encoding == AudioFormat.ENCODING_PCM_FLOAT) 4 else 2
+        val floor = rate / 2 * bytesPerSample // ≥0.5 s: evita underruns/estática
         var buf = AudioTrack.getMinBufferSize(rate, AudioFormat.CHANNEL_OUT_MONO, encoding)
         if (buf <= 0) {
             Log.w(TAG, "getMinBufferSize($rate, enc=$encoding) failed — using 0.5 s fallback")
-            buf = rate / 2 * bytesPerSample // 0.5 s: keeps WRITE_BLOCKING smooth
+            buf = floor
+        } else {
+            buf = buf.coerceAtLeast(floor)
         }
         val attrs = AudioAttributes.Builder()
             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
@@ -256,6 +271,9 @@ object KokoroVoice {
     /** Write one generated chunk, converting/resampling to the track format. */
     private fun writeChunk(session: PlaySession, samples: FloatArray) {
         if (session.encoding == AudioFormat.ENCODING_PCM_FLOAT) {
+            // Ganancia de salida con clamp para que la voz se oiga clara sin
+            // saturar (clamp a [-1, 1] tras amplificar).
+            for (i in samples.indices) samples[i] = (samples[i] * OUTPUT_GAIN).coerceIn(-1f, 1f)
             session.track.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
             return
         }
@@ -265,7 +283,7 @@ object KokoroVoice {
             samples
         }
         val shorts = ShortArray(resampled.size) { i ->
-            (resampled[i].coerceIn(-1f, 1f) * 32767f).toInt().toShort()
+            ((resampled[i] * OUTPUT_GAIN).coerceIn(-1f, 1f) * 32767f).toInt().toShort()
         }
         session.track.write(shorts, 0, shorts.size, AudioTrack.WRITE_BLOCKING)
     }
