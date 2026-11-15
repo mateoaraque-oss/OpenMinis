@@ -142,12 +142,22 @@ object KokoroVoice {
                     val audio = engine.generateWithConfigAndCallback(
                         text = text,
                         config = GenerationConfig(sid = SPANISH_MALE_SID, speed = speed),
-                        callback = { samples ->
-                            // Return 1 to keep generating, 0 to stop.
-                            if (generation.get() == id) {
-                                t.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
-                                1
-                            } else 0
+                        // [T-orion-kokoro-jni-callback] A plain lambda here desugars
+                        // into a D8 synthetic class whose only `invoke` takes
+                        // (Object) — sherpa's native side looks up the concrete
+                        // `invoke([F)Ljava/lang/Integer;` by reflection, misses it,
+                        // and the pending NoSuchMethodError + NewFloatArray aborts
+                        // the whole process (SIGSEGV mid-greeting). An object
+                        // expression compiles to a real class with exactly that
+                        // method, so the JNI lookup succeeds.
+                        callback = object : (FloatArray) -> Int {
+                            override fun invoke(samples: FloatArray): Int {
+                                // Return 1 to keep generating, 0 to stop.
+                                if (generation.get() == id) {
+                                    t.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
+                                    1
+                                } else 0
+                            }
                         },
                     )
                     if (generation.get() == id) {
