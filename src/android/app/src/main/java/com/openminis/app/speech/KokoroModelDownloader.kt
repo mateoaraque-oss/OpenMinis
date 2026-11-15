@@ -14,49 +14,51 @@ import java.io.File
 import java.io.FileInputStream
 
 /**
- * [T-orion-kokoro-tts] One-time download + extraction of the offline Kokoro
- * TTS voice model.
+ * [T-orion-kokoro-tts] One-time download + extraction of the offline TTS voice
+ * model.
  *
- * Model: `kokoro-int8-multi-lang-v1_0` from the sherpa-onnx `tts-models`
- * release (Apache-2.0 code; the base model is from hexgrad/Kokoro-82M, apache
- * license as well). int8 quantization keeps it at ~126 MB packed / ~130 MB on
- * disk instead of the 334 MB of the fp32 build. It ships Spanish voices,
- * including a male one (`em_alex`, speaker id 29) which is what the JARVIS
- * greeting needs — no more "chica" voice.
+ * Model: `vits-piper-es_ES-miro-high-int8` from the sherpa-onnx `tts-models`
+ * release (MIT; piper voices are trained on public-domain data). A real male
+ * Spanish voice from Spain — the JARVIS greeting needs a natural "oye orión"
+ * reply, not a "chica" voice. int8 keeps the download at ~21 MB instead of the
+ * ~67 MB of the fp32 build.
+ *
+ * Piper was chosen over Kokoro after Kokoro proved unusable for Spanish:
+ * sherpa-onnx only phonemizes English and Chinese for kokoro-multi-lang-v1_0,
+ * so Spanish text fell through to espeak-ng's default voice and came out with
+ * a French "r". Piper ships full espeak-ng data for its language.
  *
  * The archive is a tar.bz2 with:
- *  - model.int8.onnx   (~82 MB) the acoustic model
- *  - voices.bin        (~26 MB) the 53 speaker embeddings
- *  - tokens.txt        (~1 KB)  phoneme vocabulary
- *  - espeak-ng-data/   (~8 MB)  phonemization data for non-lexicon languages,
- *                               including Spanish
- *  - lexicon-us-en.txt, lexicon-zh.txt (grapheme→phoneme maps for en/zh)
+ *  - es_ES-miro-high.onnx (~60 MB fp32 → ~21 MB int8) the acoustic model
+ *  - tokens.txt           (~1 KB)  phoneme vocabulary
+ *  - espeak-ng-data/      (~8 MB)  phonemization data for Spanish
  *
  * Downloaded via the system DownloadManager (survives process death, shows a
- * progress notification), then extracted to `files/kokoro/` and the archive
+ * progress notification), then extracted to `files/piper/` and the archive
  * deleted. Everything lives in the app's private storage; nothing is in the
- * APK because ~130 MB cannot reasonably ship inside it — this is the one-time
- * "voice is included" step, after which all speech is fully offline.
+ * APK because the model cannot reasonably ship inside it — this is the
+ * one-time "voice is included" step, after which all speech is fully offline.
  */
 object KokoroModelDownloader {
 
     private const val TAG = "OrionKokoroDownload"
-    private const val PREFS = "kokoro_model_download"
+    // New prefs name: the old "kokoro_model_download" prefs still point at the
+    // finished Kokoro download id, which would report NEEDS_EXTRACT forever.
+    private const val PREFS = "piper_model_download"
     private const val KEY_DOWNLOAD_ID = "download_id"
-    private const val ARCHIVE_NAME = "kokoro-int8-multi-lang-v1_0.tar.bz2"
+    private const val ARCHIVE_NAME = "vits-piper-es_ES-miro-high-int8.tar.bz2"
 
     private const val MODEL_URL =
         "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/" + ARCHIVE_NAME
 
     /** Files that must exist for the engine to load. */
     val REQUIRED_FILES = listOf(
-        "model.int8.onnx",
-        "voices.bin",
+        "es_ES-miro-high.onnx",
         "tokens.txt",
     )
 
-    /** Where the extracted model lives: `files/kokoro/`. */
-    fun assetsDir(context: Context): File = File(context.filesDir, "kokoro")
+    /** Where the extracted model lives: `files/piper/`. */
+    fun assetsDir(context: Context): File = File(context.filesDir, "piper")
 
     private fun archiveFile(context: Context): File =
         File(
@@ -75,7 +77,7 @@ object KokoroModelDownloader {
     /** True when an archive has landed but not been extracted yet. */
     fun isArchiveReady(context: Context): Boolean =
         !isInstalled(context) && archiveFile(context).isFile &&
-            archiveFile(context).length() > 50_000_000L // ~126 MB, sanity floor
+            archiveFile(context).length() > 10_000_000L // ~21 MB int8, sanity floor
 
     fun status(context: Context): Status {
         if (isInstalled(context)) return Status.READY
@@ -129,8 +131,8 @@ object KokoroModelDownloader {
     }
 
     /**
-     * Extract `Downloads/kokoro-int8-multi-lang-v1_0.tar.bz2` into
-     * `files/kokoro/` and delete the archive. Returns true on success.
+     * Extract the downloaded piper tar.bz2 into `files/piper/` and delete the
+     * archive. Returns true on success.
      */
     suspend fun extract(context: Context): Boolean = withContext(Dispatchers.IO) {
         if (isInstalled(context)) return@withContext true

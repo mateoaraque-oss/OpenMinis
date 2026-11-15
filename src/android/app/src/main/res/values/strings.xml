@@ -2828,6 +2828,6 @@
     <string name="orion_model_download_title">Orion &#183; downloading %1$s</string>
     <string name="orion_model_download_body">You can keep using the app; the download continues in the background.</string>
     <string name="orion_model_get_another">Download another model</string>
-    <string name="kokoro_model_download_title">Orion &#183; downloading Kokoro voice</string>
-    <string name="kokoro_model_download_body">Offline voice model, one time (~130 MB). All replies will speak with this voice.</string>
+    <string name="kokoro_model_download_title">Orion &#183; downloading voice</string>
+    <string name="kokoro_model_download_body">Offline voice model, one time (~21 MB). All replies will speak with this voice.</string>
 </resources>

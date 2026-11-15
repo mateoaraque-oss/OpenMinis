@@ -8,8 +8,8 @@ import android.media.AudioTrack
 import com.k2fsa.sherpa.onnx.GenerationConfig
 import com.k2fsa.sherpa.onnx.OfflineTts
 import com.k2fsa.sherpa.onnx.OfflineTtsConfig
-import com.k2fsa.sherpa.onnx.OfflineTtsKokoroModelConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
+import com.k2fsa.sherpa.onnx.OfflineTtsVitsModelConfig
 import com.openminis.app.logging.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -18,19 +18,25 @@ import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * [T-orion-kokoro-tts] Offline TTS backed by sherpa-onnx + Kokoro (int8).
+ * [T-orion-kokoro-tts] Offline TTS backed by sherpa-onnx + VITS piper.
  *
- * This replaces the system Google-TTS voice entirely: Kokoro runs on-device,
+ * This replaces the system Google-TTS voice entirely: piper runs on-device,
  * needs no network and no engine selection, and ships a real male Spanish
- * voice (`em_alex`, speaker 29) so the JARVIS greeting no longer sounds like a
- * "chica" voice. Because `generateWithCallbackAndCallback` streams samples to
- * an AudioTrack WHILE the model is still generating, speech starts long before
- * synthesis completes — the perceived latency is roughly the first sentence,
- * not the whole reply.
+ * voice (`es_ES-miro`, high quality) so the JARVIS greeting no longer sounds
+ * like a "chica" voice. Because `generateWithCallbackAndCallback` streams
+ * samples to an AudioTrack WHILE the model is still generating, speech starts
+ * long before synthesis completes — the perceived latency is roughly the first
+ * sentence, not the whole reply.
  *
- * The model is a one-time download (see [KokoroModelDownloader], ~130 MB in
- * `files/kokoro/`). Everything here is a no-op that returns false until it is
- * installed, so callers fall back to the system engine transparently.
+ * Piper was chosen over Kokoro after Kokoro proved unusable for Spanish:
+ * sherpa-onnx only phonemizes English and Chinese for kokoro-multi-lang-v1_0
+ * (its G2P pipeline ships misaki us/gb + a zh lexicon only), so Spanish text
+ * fell through to espeak-ng's default voice and came out with a French "r".
+ * Piper models use espeak-ng with full per-language data, so Spanish works.
+ *
+ * The model is a one-time download (see [KokoroModelDownloader], ~21 MB int8
+ * in `files/piper/`). Everything here is a no-op that returns false until it
+ * is installed, so callers fall back to the system engine transparently.
  *
  * A single app-scoped instance is shared by the wake-word service (greeting +
  * spoken replies outside the app) and [ReadAloudPlayer] (in-app voice): model
@@ -40,19 +46,13 @@ object KokoroVoice {
 
     private const val TAG = "OrionKokoroTts"
 
-    /**
-     * Speaker id 29 = `em_alex` — the male Spanish voice of
-     * kokoro-multi-lang-v1_0 (28 = ef_dora female; the rest are en/zh/…).
-     */
-    const val SPANISH_MALE_SID = 29
-
     private var context: Context? = null
     private var tts: OfflineTts? = null
     private var track: AudioTrack? = null
     private val loadMutex = Mutex()
     private val speakMutex = Mutex()
     private val generation = AtomicInteger(0)
-    private var sampleRate = 24_000
+    private var sampleRate = 22_050
 
     fun init(appContext: Context) {
         if (context == null) context = appContext.applicationContext
@@ -85,18 +85,12 @@ object KokoroVoice {
                 val dir = KokoroModelDownloader.assetsDir(appContext)
                 val config = OfflineTtsConfig(
                     model = OfflineTtsModelConfig(
-                        kokoro = OfflineTtsKokoroModelConfig(
-                            model = java.io.File(dir, "model.int8.onnx").absolutePath,
-                            voices = java.io.File(dir, "voices.bin").absolutePath,
+                        vits = OfflineTtsVitsModelConfig(
+                            model = java.io.File(dir, "es_ES-miro-high.onnx").absolutePath,
                             tokens = java.io.File(dir, "tokens.txt").absolutePath,
-                            // Spanish (and every non-lexicon language) is
-                            // phonemized from the espeak-ng data shipped in
-                            // the model package.
+                            // Piper phonemizes Spanish through espeak-ng using
+                            // the per-language data shipped in the package.
                             dataDir = java.io.File(dir, "espeak-ng-data").absolutePath,
-                            lexicon = listOf(
-                                java.io.File(dir, "lexicon-us-en.txt").absolutePath,
-                                java.io.File(dir, "lexicon-zh.txt").absolutePath,
-                            ).joinToString(","),
                         ),
                         numThreads = 2,
                         debug = false,
@@ -109,7 +103,7 @@ object KokoroVoice {
                 tts = engine
                 AppLogger.info(
                     TAG,
-                    "Kokoro loaded: sampleRate=$sampleRate speakers=${engine.numSpeakers()}",
+                    "Piper loaded: sampleRate=$sampleRate speakers=${engine.numSpeakers()}",
                 )
             }
             true
@@ -141,7 +135,7 @@ object KokoroVoice {
                     t.play()
                     val audio = engine.generateWithConfigAndCallback(
                         text = text,
-                        config = GenerationConfig(sid = SPANISH_MALE_SID, speed = speed),
+                        config = GenerationConfig(sid = 0, speed = speed),
                         // [T-orion-kokoro-jni-callback] A plain lambda here desugars
                         // into a D8 synthetic class whose only `invoke` takes
                         // (Object) — sherpa's native side looks up the concrete
