@@ -47,9 +47,10 @@ object KokoroVoice {
     private const val TAG = "OrionKokoroTts"
 
     // [T-orion-voice-volume] La voz masculina española de piper se oye baja en
-    // este HAL UNISOC; una ganancia de salida moderada la lleva a un nivel
-    // cómodo sin distorsionar (se clampea en [-1, 1]).
-    private const val OUTPUT_GAIN = 2.5f
+    // este HAL UNISOC; una ganancia de salida moderada la sube sin hacer clip
+    // (muestras >1,0 clampeadas = distorsión/estática). 2.0f es el valor seguro;
+    // si se oye bajo, subir el volumen físico del teléfono.
+    private const val OUTPUT_GAIN = 2.0f
 
     private var context: Context? = null
     private var tts: OfflineTts? = null
