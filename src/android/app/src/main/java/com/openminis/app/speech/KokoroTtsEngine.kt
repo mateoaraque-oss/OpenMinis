@@ -5,7 +5,6 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
-import com.k2fsa.sherpa.onnx.GenerationConfig
 import com.k2fsa.sherpa.onnx.OfflineTts
 import com.k2fsa.sherpa.onnx.OfflineTtsConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
@@ -141,17 +140,27 @@ object KokoroVoice {
                     val t = openTrack(engine.sampleRate())
                     track = t
                     t.play()
-                    val audio = engine.generateWithConfigAndCallback(
+                    // [T-orion-kokoro-jni-callback] A plain lambda here desugars
+                    // into a D8 synthetic class whose only `invoke` takes
+                    // (Object) — sherpa's native side looks up the concrete
+                    // `invoke([F)Ljava/lang/Integer;` by reflection, misses it,
+                    // and the pending NoSuchMethodError + NewFloatArray aborts
+                    // the whole process (SIGSEGV mid-greeting). An object
+                    // expression compiles to a real class with exactly that
+                    // method, so the JNI lookup succeeds.
+                    //
+                    // [T-orion-piper-tts] sherpa-onnx is pinned to 1.x, whose
+                    // Kotlin API only offers generateWithCallback(text, sid,
+                    // speed, callback) — the 2.x generateWithConfigAndCallback
+                    // does not exist there, and 1.x is required anyway because
+                    // it is the last line with espeak-ng phonemization for
+                    // piper models (Spanish!). With maxNumSentences=1 the
+                    // callback fires once per sentence, so speech still starts
+                    // before the whole reply is synthesized.
+                    val audio = engine.generateWithCallback(
                         text = text,
-                        config = GenerationConfig(sid = 0, speed = speed),
-                        // [T-orion-kokoro-jni-callback] A plain lambda here desugars
-                        // into a D8 synthetic class whose only `invoke` takes
-                        // (Object) — sherpa's native side looks up the concrete
-                        // `invoke([F)Ljava/lang/Integer;` by reflection, misses it,
-                        // and the pending NoSuchMethodError + NewFloatArray aborts
-                        // the whole process (SIGSEGV mid-greeting). An object
-                        // expression compiles to a real class with exactly that
-                        // method, so the JNI lookup succeeds.
+                        sid = 0,
+                        speed = speed,
                         callback = object : (FloatArray) -> Int {
                             override fun invoke(samples: FloatArray): Int {
                                 // Return 1 to keep generating, 0 to stop.

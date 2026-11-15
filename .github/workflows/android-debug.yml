@@ -211,16 +211,23 @@ jobs:
 
       - name: Bundle sherpa-onnx AAR
         run: |
-          # [T-orion-kokoro-tts] Prebuilt Android AAR from release v2.0.1 with
+          # [T-orion-kokoro-tts] Prebuilt Android AAR pinned to v1.12.15 with
           # libsherpa-onnx-jni.so and the com.k2fsa.sherpa.onnx Kotlin API
           # (OfflineTts). The static-link-onnxruntime variant is required:
           # the APK already ships libonnxruntime.so via the VAD library, and
           # a second copy of that .so can break the JNI wrapper. Apache-2.0.
           # Same vendored pattern as vosk-android above.
+          #
+          # [T-orion-piper-tts] Pinned to 1.x ON PURPOSE: since v2.0.0
+          # sherpa-onnx dropped espeak-ng phonemization for VITS/piper
+          # (vits-data-dir is ignored there), so piper + plain Spanish text
+          # produced "no lexicon, no frontend" and zero audio. 1.x still
+          # builds a PiperPhonemizeLexicon from data_dir, which phonemizes
+          # Spanish correctly.
           mkdir -p src/android/app/libs
           curl -fL --retry 3 --retry-delay 5 \
             -o src/android/app/libs/sherpa-onnx.aar \
-            "https://github.com/k2-fsa/sherpa-onnx/releases/download/v2.0.1/sherpa-onnx-static-link-onnxruntime-2.0.1.aar"
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.12.15/sherpa-onnx-static-link-onnxruntime-1.12.15.aar"
           echo "--- sherpa aar ---"
           ls -lh src/android/app/libs/sherpa-onnx.aar
 
