@@ -938,9 +938,18 @@ class WakeWordService : Service(), LifecycleEventObserver {
     private suspend fun speakViaKokoro(text: String): Boolean {
         KokoroVoice.init(applicationContext)
         if (!KokoroVoice.isModelReady()) {
-            maybeStartKokoroDownload()
-            maybeExtractKokoroArchive()
-            return false
+            // [T-orion-piper-tts] A bundled APK can unpack its voice model
+            // right here (seconds, one-time); only when the APK ships without
+            // the model do we enqueue the DownloadManager fetch and stay on
+            // the system voice for this utterance.
+            val unpacked = runCatching {
+                KokoroModelDownloader.installFromAssets(applicationContext)
+            }.getOrDefault(false) && KokoroVoice.isModelReady()
+            if (!unpacked) {
+                maybeStartKokoroDownload()
+                maybeExtractKokoroArchive()
+                return false
+            }
         }
         return try {
             KokoroVoice.speak(text)
@@ -952,7 +961,7 @@ class WakeWordService : Service(), LifecycleEventObserver {
         }
     }
 
-    /** One-time: fetch the ~130 MB Kokoro voice model via DownloadManager. */
+    /** Fallback: fetch the ~21 MB voice model via DownloadManager (only when the APK ships without it). */
     private var kokoroDownloadStarted = false
     private fun maybeStartKokoroDownload() {
         if (kokoroDownloadStarted) return

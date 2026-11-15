@@ -51,6 +51,9 @@ object KokoroModelDownloader {
     private const val MODEL_URL =
         "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/" + ARCHIVE_NAME
 
+    /** Archive shipped inside the APK (single-download installs). */
+    private const val ASSET_ARCHIVE = "piper-es_ES-miro-high-int8.tar.bz2"
+
     /** Files that must exist for the engine to load. */
     val REQUIRED_FILES = listOf(
         "es_ES-miro-high.onnx",
@@ -78,6 +81,12 @@ object KokoroModelDownloader {
     fun isArchiveReady(context: Context): Boolean =
         !isInstalled(context) && archiveFile(context).isFile &&
             archiveFile(context).length() > 10_000_000L // ~21 MB int8, sanity floor
+
+    /** True when this APK bundles the voice model in its assets. */
+    fun hasBundledModel(context: Context): Boolean = runCatching {
+        context.assets.open(ASSET_ARCHIVE).close()
+        true
+    }.getOrDefault(false)
 
     fun status(context: Context): Status {
         if (isInstalled(context)) return Status.READY
@@ -138,42 +147,14 @@ object KokoroModelDownloader {
         if (isInstalled(context)) return@withContext true
         val src = archiveFile(context)
         if (!src.isFile) {
-            AppLogger.error(TAG, "Kokoro archive missing: ${src.absolutePath}")
+            AppLogger.error(TAG, "Piper archive missing: ${src.absolutePath}")
             return@withContext false
         }
         val dst = assetsDir(context)
-        dst.mkdirs()
         try {
-            TarArchiveInputStream(BZip2CompressorInputStream(FileInputStream(src))).use { tar ->
-                var entry = tar.nextTarEntry
-                while (entry != null) {
-                    // The archive wraps everything in a single root folder
-                    // (kokoro-int8-multi-lang-v1_0/...); strip it so the model
-                    // files land directly in files/kokoro/.
-                    val relative = entry.name.removePrefix("./").let {
-                        val i = it.indexOf('/')
-                        when {
-                            i < 0 -> it
-                            i == it.length - 1 -> "" // the root dir entry itself
-                            else -> it.substring(i + 1)
-                        }
-                    }
-                    if (relative.isBlank()) {
-                        entry = tar.nextTarEntry
-                        continue
-                    }
-                    val out = File(dst, relative)
-                    if (entry.isDirectory) {
-                        out.mkdirs()
-                    } else {
-                        out.parentFile?.mkdirs()
-                        out.outputStream().use { tar.copyTo(it) }
-                    }
-                    entry = tar.nextTarEntry
-                }
-            }
+            FileInputStream(src).use { extractTar(it, dst) }
             val ok = isInstalled(context)
-            AppLogger.info(TAG, "Kokoro extract finished ok=$ok")
+            AppLogger.info(TAG, "Piper extract finished ok=$ok")
             if (ok) {
                 src.delete()
                 context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -181,9 +162,64 @@ object KokoroModelDownloader {
             }
             ok
         } catch (t: Throwable) {
-            AppLogger.error(TAG, "Kokoro extract failed: ${t.message}")
+            AppLogger.error(TAG, "Piper extract failed: ${t.message}")
             dst.deleteRecursively()
             false
+        }
+    }
+
+    /**
+     * [T-orion-piper-tts] Unpack the archive bundled in the APK assets into
+     * `files/piper/` — the single-download install path: a fresh install
+     * speaks with the Orion voice after one APK download, no second fetch.
+     * One-time cost is seconds of bz2 I/O. Returns true on success.
+     */
+    suspend fun installFromAssets(context: Context): Boolean = withContext(Dispatchers.IO) {
+        if (isInstalled(context)) return@withContext true
+        val dst = assetsDir(context)
+        try {
+            context.assets.open(ASSET_ARCHIVE).use { extractTar(it, dst) }
+            val ok = isInstalled(context)
+            AppLogger.info(TAG, "Piper asset unpack finished ok=$ok")
+            if (!ok) dst.deleteRecursively()
+            ok
+        } catch (t: Throwable) {
+            AppLogger.error(TAG, "Piper asset unpack failed: ${t.message}")
+            dst.deleteRecursively()
+            false
+        }
+    }
+
+    /** Shared tar.bz2 → [dst] unpack; strips the archive's root folder. */
+    private fun extractTar(raw: java.io.InputStream, dst: File) {
+        dst.mkdirs()
+        TarArchiveInputStream(BZip2CompressorInputStream(raw)).use { tar ->
+            var entry = tar.nextTarEntry
+            while (entry != null) {
+                // The archive wraps everything in a single root folder
+                // (vits-piper-es_ES-miro-high/...); strip it so the model
+                // files land directly in files/piper/.
+                val relative = entry.name.removePrefix("./").let {
+                    val i = it.indexOf('/')
+                    when {
+                        i < 0 -> it
+                        i == it.length - 1 -> "" // the root dir entry itself
+                        else -> it.substring(i + 1)
+                    }
+                }
+                if (relative.isBlank()) {
+                    entry = tar.nextTarEntry
+                    continue
+                }
+                val out = File(dst, relative)
+                if (entry.isDirectory) {
+                    out.mkdirs()
+                } else {
+                    out.parentFile?.mkdirs()
+                    out.outputStream().use { tar.copyTo(it) }
+                }
+                entry = tar.nextTarEntry
+            }
         }
     }
 }

@@ -77,8 +77,16 @@ object KokoroVoice {
         val appContext = context ?: return false
         if (tts != null) return true
         if (!KokoroModelDownloader.isInstalled(appContext)) {
-            AppLogger.info(TAG, "Kokoro model not installed yet — system TTS fallback")
-            return false
+            // [T-orion-piper-tts] Bundled-APK builds carry the model in
+            // assets: unpack it right here (seconds, one time) instead of
+            // falling back to the system voice on the first utterance.
+            val unpacked = runCatching {
+                KokoroModelDownloader.installFromAssets(appContext)
+            }.getOrDefault(false)
+            if (!unpacked) {
+                AppLogger.info(TAG, "Piper model not installed yet — system TTS fallback")
+                return false
+            }
         }
         return try {
             withContext(Dispatchers.Default) {
