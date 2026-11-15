@@ -604,9 +604,9 @@ class WakeWordService : Service(), LifecycleEventObserver {
         main.removeCallbacks(panelTimeout)
         // No hay conteo de tarjeta durante el greeting: la tarjeta debe seguir
         // viva hasta que el micrófono se abra. El conteo real empieza en
-        // startPanelSpeech (después de hablar). Red de seguridad de 30 s por si
+        // startPanelSpeech (después de hablar). Red de seguridad de 60 s por si
         // el greeting se queda colgado y nunca entrega el micrófono.
-        main.postDelayed(panelTimeout, 30_000L)
+        main.postDelayed(panelTimeout, 60_000L)
         greetJob?.cancel()
         val generation = ++panelGeneration
         greetJob = scope.launch {
@@ -703,6 +703,7 @@ class WakeWordService : Service(), LifecycleEventObserver {
     }
 
     private fun startPanelSpeech() {
+        Log.w(TAG, "startPanelSpeech: generation=$panelGeneration showing=${panel?.isShowing}")
         main.removeCallbacks(panelTimeout)
         main.postDelayed(panelTimeout, PANEL_TIMEOUT_MS)
         destroySpeech()
@@ -727,7 +728,7 @@ class WakeWordService : Service(), LifecycleEventObserver {
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1_200L)
         }
-        var listeningRetried = false
+        var listeningRetries = 0
         recognizer.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {
                 panel?.setState(WakePanelController.State.LISTENING)
@@ -753,15 +754,15 @@ class WakeWordService : Service(), LifecycleEventObserver {
                 Log.w(TAG, "panel speech error $error")
                 main.removeCallbacks(panelTimeout)
                 // ERROR_CLIENT (7) es un fallo transitorio del reconocedor:
-                // reintentar startListening una vez en lugar de cerrar la
-                // tarjeta, que es lo que provoca "no me deja hablar".
-                if (error == SpeechRecognizer.ERROR_CLIENT && !listeningRetried) {
-                    listeningRetried = true
+                // reintentar startListening hasta 2 veces en lugar de cerrar
+                // la tarjeta, que es lo que provoca "no me deja hablar".
+                if (error == SpeechRecognizer.ERROR_CLIENT && listeningRetries < 2) {
+                    listeningRetries++
                     main.postDelayed({
                         try {
                             recognizer.startListening(listenIntent)
                         } catch (t: Throwable) {
-                            Log.w(TAG, "startListening retry failed: ${t.message}")
+                            Log.w(TAG, "startListening retry #$listeningRetries failed: ${t.message}")
                             closePanel(resume = true)
                         }
                     }, 500)

@@ -138,10 +138,12 @@ object KokoroVoice {
     }
 
     /**
-     * Speak [text] with the male Spanish voice. Streams audio while it
-     * generates; suspends until playback has drained. Returns false (nothing
-     * played) when the model is unavailable or generation fails — callers fall
-     * back to the system engine.
+     * Speak [text] with the male Spanish voice. Generates the whole utterance,
+     * then plays it in one shot so the AudioTrack never starves between chunks
+     * (that starvation was the static/"emisora sin señal" the user hears).
+     * Suspends until playback has drained. Returns false (nothing played) when
+     * the model is unavailable or generation fails — callers fall back to the
+     * system engine.
      */
     suspend fun speak(text: String, speed: Float = 1.0f): Boolean {
         if (text.isBlank()) return false
@@ -171,9 +173,8 @@ object KokoroVoice {
                     // speed, callback) — the 2.x generateWithConfigAndCallback
                     // does not exist there, and 1.x is required anyway because
                     // it is the last line with espeak-ng phonemization for
-                    // piper models (Spanish!). With maxNumSentences=1 the
-                    // callback fires once per sentence, so speech still starts
-                    // before the whole reply is synthesized.
+                    // piper models (Spanish!).
+                    val chunks = mutableListOf<FloatArray>()
                     val audio = engine.generateWithCallback(
                         text = text,
                         sid = 0,
@@ -182,16 +183,24 @@ object KokoroVoice {
                             override fun invoke(samples: FloatArray): Int {
                                 // Return 1 to keep generating, 0 to stop.
                                 if (generation.get() != id) return 0
-                                writeChunk(session, samples)
+                                chunks.add(samples.copyOf(samples.size))
                                 return 1
                             }
                         },
                     )
-                    if (generation.get() == id) {
-                        // Callbacks covered the whole stream; let the track
-                        // drain what was already written.
-                        val silence = FloatArray(session.modelRate / 10)
-                        writeChunk(session, silence)
+                    if (generation.get() == id && chunks.isNotEmpty()) {
+                        // Escribe todo el audio acumulado de una vez: sin
+                        // huecos entre escrituras → sin underruns, sin estática.
+                        val total = chunks.sumOf { it.size }
+                        val all = FloatArray(total)
+                        var off = 0
+                        for (c in chunks) {
+                            System.arraycopy(c, 0, all, off, c.size)
+                            off += c.size
+                        }
+                        writeChunk(session, all)
+                        // Cola de silencio para drenar lo último del track.
+                        writeChunk(session, FloatArray(session.modelRate / 10))
                     }
                     session.track.stop()
                     session.track.release()
