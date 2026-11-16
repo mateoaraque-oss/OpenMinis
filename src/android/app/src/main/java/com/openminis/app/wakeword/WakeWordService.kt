@@ -99,6 +99,7 @@ class WakeWordService : Service(), LifecycleEventObserver {
         const val ACTION_STOP = "com.openminis.app.wakeword.STOP"
         const val ACTION_TEST_WAV = "com.openminis.app.wakeword.TEST_WAV"
         const val ACTION_TEST_PANEL = "com.openminis.app.wakeword.TEST_PANEL"
+        const val ACTION_TEST_TTS = "com.openminis.app.wakeword.TEST_TTS"
         const val EXTRA_TEXT = "text"
 
         private const val PREFS = "orion_wake_word"
@@ -336,6 +337,25 @@ class WakeWordService : Service(), LifecycleEventObserver {
                 val text = intent.getStringExtra(EXTRA_TEXT)
                 main.post {
                     if (text.isNullOrBlank()) openWakePanel() else deliverPrompt(text)
+                }
+                return START_NOT_STICKY
+            }
+            ACTION_TEST_TTS -> {
+                // Debug-only harness for the offline voice: synthesize the
+                // given text (default: the greeting) and log how long it took
+                // and how long the resulting audio is, then leave the WAV in
+                // cache for inspection over adb. Not exported.
+                val text = intent.getStringExtra(EXTRA_TEXT)
+                    ?: getString(R.string.orion_wake_panel_greeting)
+                scope.launch {
+                    KokoroVoice.init(applicationContext)
+                    val t0 = System.currentTimeMillis()
+                    val ok = runCatching { KokoroVoice.speak(text) }.getOrDefault(false)
+                    Log.w(
+                        TAG,
+                        "TEST_TTS ok=$ok ms=${System.currentTimeMillis() - t0} " +
+                            "text=\"$text\"",
+                    )
                 }
                 return START_NOT_STICKY
             }

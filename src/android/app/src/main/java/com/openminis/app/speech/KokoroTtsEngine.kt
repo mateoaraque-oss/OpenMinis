@@ -21,7 +21,6 @@ import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.atomic.AtomicInteger
-import kotlin.math.tanh
 
 /**
  * [T-orion-kokoro-tts] Offline TTS backed by sherpa-onnx + VITS piper.
@@ -52,10 +51,14 @@ object KokoroVoice {
 
     private const val TAG = "OrionKokoroTts"
 
-    // [T-orion-voice-volume] La voz de piper se oye baja en este dispositivo.
-    // Se aplica ganancia en la conversión a WAV con un limitador suave (tanh):
-    // sube el volumen sin el clipping duro que suena a estática.
-    private const val OUTPUT_GAIN = 2.2f
+    // [T-orion-voice-volume] El modelo es_ES-miro-high int8 entrega el audio con
+    // un pico muy bajo (~0,13), así que sonaba bajísimo y obligaba a subir el
+    // volumen del teléfono al máximo (donde el amplificador mete su propio
+    // ruido). En lugar de una ganancia fija, se normaliza cada frase a
+    // TARGET_PEAK, con un tope de MAX_GAIN para no amplificar el fondo de un
+    // audio casi mudo.
+    private const val TARGET_PEAK = 0.95f
+    private const val MAX_GAIN = 20f
 
     private var context: Context? = null
     private var tts: OfflineTts? = null
@@ -299,11 +302,21 @@ object KokoroVoice {
             le16(16)             // bits per sample
             ascii("data")
             le32(dataBytes)
+            // Normaliza al pico para que suene fuerte a volumen medio.
+            var peak = 0f
             for (s in samples) {
-                // tanh satura suavemente: evita el clipping duro (distorsión)
-                // y mantiene inteligible el final de cada frase.
-                val v = tanh(s * OUTPUT_GAIN)
-                val pcm = (v * 32767f).toInt().coerceIn(-32768, 32767)
+                val a = kotlin.math.abs(s)
+                if (a > peak) peak = a
+            }
+            val gain = if (peak > 1e-4f) {
+                (TARGET_PEAK / peak).coerceAtMost(MAX_GAIN)
+            } else {
+                1f
+            }
+            Log.w(TAG, "WAV gain=${"%.2f".format(gain)} peak=${"%.3f".format(peak)}")
+            for (s in samples) {
+                val pcm = (s * gain).coerceIn(-1f, 1f).times(32767f).toInt()
+                    .coerceIn(-32768, 32767)
                 le16(pcm)
             }
         } finally {
