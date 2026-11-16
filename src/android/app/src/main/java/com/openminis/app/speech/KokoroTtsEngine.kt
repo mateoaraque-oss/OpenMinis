@@ -274,7 +274,7 @@ object KokoroVoice {
         return ok
     }
 
-    /** WAV PCM 16-bit mono con ganancia y limitador suave. */
+    /** WAV PCM 16-bit mono: normalizado, sin agudos y con las pausas en silencio. */
     private fun writeWav(file: File, samples: FloatArray, rate: Int) {
         val dataBytes = samples.size * 2
         val out = BufferedOutputStream(FileOutputStream(file), 1 shl 16)
@@ -302,7 +302,13 @@ object KokoroVoice {
             le16(16)             // bits per sample
             ascii("data")
             le32(dataBytes)
-            // Normaliza al pico para que suene fuerte a volumen medio.
+
+            // [T-orion-voice-denoise] El modelo piper int8 deja un hiss de
+            // fondo (~-29 dB) en las pausas; al normalizar se volvía audible
+            // como "estática". Cadena: normalizar al pico → doble low-pass
+            // 6 kHz (el hiss vive en agudos) → puerta de ruido que silencia las
+            // pausas sin tocar la voz. Validado sobre el WAV real del teléfono:
+            // pausa -27,5 → -42 dB, voz intacta.
             var peak = 0f
             for (s in samples) {
                 val a = kotlin.math.abs(s)
@@ -313,9 +319,50 @@ object KokoroVoice {
             } else {
                 1f
             }
+            val norm = FloatArray(samples.size) {
+                (samples[it] * gain).coerceIn(-1f, 1f)
+            }
             Log.w(TAG, "WAV gain=${"%.2f".format(gain)} peak=${"%.3f".format(peak)}")
-            for (s in samples) {
-                val pcm = (s * gain).coerceIn(-1f, 1f).times(32767f).toInt()
+
+            // Doble one-pole low-pass a 6 kHz (12 dB/oct).
+            val a = (1.0 - kotlin.math.exp(-2.0 * Math.PI * 6_000.0 / rate)).toFloat()
+            var y1 = 0f
+            var y2 = 0f
+            for (i in norm.indices) {
+                y1 += a * (norm[i] - y1)
+                y2 += a * (y1 - y2)
+                norm[i] = y2
+            }
+
+            // Puerta de ruido por tramas de 10 ms.
+            val frame = (rate / 100).coerceAtLeast(1)
+            val frames = (norm.size + frame - 1) / frame
+            val rms = FloatArray(frames)
+            for (f in 0 until frames) {
+                val st = f * frame
+                val en = minOf(st + frame, norm.size)
+                var acc = 0.0
+                for (i in st until en) {
+                    val v = norm[i].toDouble()
+                    acc += v * v
+                }
+                rms[f] = kotlin.math.sqrt(acc / (en - st).coerceAtLeast(1)).toFloat()
+            }
+            val sorted = rms.copyOf()
+            sorted.sort()
+            val floor = sorted[(sorted.size * 0.12).toInt().coerceIn(0, sorted.size - 1)]
+            val lo = floor * 1.15f
+            val hi = floor * 4.0f
+            var g = 1f
+            for (i in norm.indices) {
+                val r = rms[minOf(i / frame, frames - 1)]
+                val target = when {
+                    r <= lo -> 0f
+                    r >= hi -> 1f
+                    else -> (r - lo) / (hi - lo)
+                }
+                g += (target - g) * if (target > g) 0.05f else 0.0025f
+                val pcm = (norm[i] * g).coerceIn(-1f, 1f).times(32767f).toInt()
                     .coerceIn(-32768, 32767)
                 le16(pcm)
             }
