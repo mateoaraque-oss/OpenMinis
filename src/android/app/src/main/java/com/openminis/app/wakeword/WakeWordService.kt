@@ -130,7 +130,7 @@ class WakeWordService : Service(), LifecycleEventObserver {
         const val DEFAULT_PHRASE = "oye orión"
 
         private const val RETRIGGER_MS = 6_000L
-        private const val PANEL_TIMEOUT_MS = 12_000L
+        private const val PANEL_TIMEOUT_MS = 20_000L
 
         /**
          * [T-orion-wake-greeting] Upper bound for «¿Me llamó, señor?».
@@ -737,8 +737,12 @@ class WakeWordService : Service(), LifecycleEventObserver {
         }
         speech = recognizer
         // El intent se construye antes del listener para que onError pueda
-        // reutilizarlo y reintentar startListening ante ERROR_CLIENT (7),
-        // que es lo que provoca "no me deja hablar y la tarjeta desaparece".
+        // reutilizarlo y reintentar startListening.
+        //
+        // [T-orion-wake-mic-int] Los extras de silencio van como Int: el
+        // reconocedor de Google hace `getIntExtra` y, al recibir un Long,
+        // lanzaba ClassCastException y se quedaba con 0 ms de silencio, así
+        // que cerraba la escucha al instante ("no me deja hablar").
         val listenIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
@@ -746,16 +750,21 @@ class WakeWordService : Service(), LifecycleEventObserver {
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1_200L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1_500)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1_200)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 700)
         }
-        var listeningRetries = 0
+        var retries = 0
+        var heardSomething = false
         recognizer.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {
                 panel?.setState(WakePanelController.State.LISTENING)
                 panel?.setStatus(getString(R.string.orion_wake_panel_listening))
             }
 
-            override fun onBeginningOfSpeech() = Unit
+            override fun onBeginningOfSpeech() {
+                heardSomething = true
+            }
 
             override fun onRmsChanged(rmsdB: Float) {
                 // rmsdB arrives roughly in [-2, 10]; map it to 0..1 for the
@@ -771,39 +780,37 @@ class WakeWordService : Service(), LifecycleEventObserver {
             }
 
             override fun onError(error: Int) {
-                Log.w(TAG, "panel speech error $error")
+                Log.w(TAG, "panel speech error $error (retries=$retries heard=$heardSomething)")
                 main.removeCallbacks(panelTimeout)
-                // ERROR_CLIENT (7) es un fallo transitorio del reconocedor:
-                // reintentar startListening hasta 2 veces en lugar de cerrar
-                // la tarjeta, que es lo que provoca "no me deja hablar".
-                if (error == SpeechRecognizer.ERROR_CLIENT && listeningRetries < 2) {
-                    listeningRetries++
+                // [T-orion-wake-mic-int] Un fallo del reconocedor ya no cierra
+                // la tarjeta a la primera: se vuelve a abrir la escucha (hasta
+                // 3 veces) porque en esta ROM el servicio de hotword de Google
+                // disputa el micrófono y devuelve ERROR_CLIENT en cuanto las dos
+                // capturas coinciden. Cerrar aquí es lo que se vivía como
+                // «no me deja hablar».
+                val transient = error == SpeechRecognizer.ERROR_CLIENT ||
+                    error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY ||
+                    error == SpeechRecognizer.ERROR_AUDIO
+                val emptyResult = error == SpeechRecognizer.ERROR_NO_MATCH ||
+                    error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+                if ((transient && retries < 3) || (emptyResult && !heardSomething && retries < 1)) {
+                    retries++
+                    panel?.setState(WakePanelController.State.LISTENING)
+                    panel?.setStatus(getString(R.string.orion_wake_panel_listening))
+                    main.postDelayed(panelTimeout, PANEL_TIMEOUT_MS)
                     main.postDelayed({
                         try {
                             recognizer.startListening(listenIntent)
                         } catch (t: Throwable) {
-                            Log.w(TAG, "startListening retry #$listeningRetries failed: ${t.message}")
+                            Log.w(TAG, "startListening retry #$retries failed: ${t.message}")
                             closePanel(resume = true)
                         }
-                    }, 500)
+                    }, 400)
                     return
                 }
-                if (error == SpeechRecognizer.ERROR_NO_MATCH ||
-                    error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
-                ) {
-                    panel?.setState(WakePanelController.State.ERROR)
-                    panel?.setStatus(getString(R.string.orion_wake_panel_no_match))
-                    main.postDelayed({ closePanel(resume = true) }, 900)
-                } else {
-                    // [T-orion-wake-strict] Was: close the panel and open the
-                    // full-screen assistant. With false wake-ups that turned
-                    // every stray word into the assistant menu. A recogniser
-                    // hiccup is not a reason to take over the screen; report it
-                    // on the panel and go back to listening.
-                    panel?.setState(WakePanelController.State.ERROR)
-                    panel?.setStatus(getString(R.string.orion_wake_panel_no_match))
-                    main.postDelayed({ closePanel(resume = true) }, 900)
-                }
+                panel?.setState(WakePanelController.State.ERROR)
+                panel?.setStatus(getString(R.string.orion_wake_panel_no_match))
+                main.postDelayed({ closePanel(resume = true) }, 900)
             }
 
             override fun onResults(results: Bundle?) {
@@ -826,6 +833,7 @@ class WakeWordService : Service(), LifecycleEventObserver {
                     ?.trim()
                     .orEmpty()
                 if (text.isNotEmpty()) {
+                    heardSomething = true
                     main.removeCallbacks(panelTimeout)
                     panel?.setStatus(getString(R.string.orion_wake_panel_heard))
                     panel?.setTranscript(text)

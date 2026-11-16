@@ -57,8 +57,16 @@ object KokoroVoice {
     // ruido). En lugar de una ganancia fija, se normaliza cada frase a
     // TARGET_PEAK, con un tope de MAX_GAIN para no amplificar el fondo de un
     // audio casi mudo.
-    private const val TARGET_PEAK = 0.95f
+    private const val TARGET_PEAK = 0.75f
     private const val MAX_GAIN = 20f
+
+    // [T-orion-voice-48k] El modelo entrega 22050 Hz y el HAL de este teléfono
+    // mezcla a 48000 Hz: dejar que el ROM remuestree añadía un "fizz" de banda
+    // ancha sobre la voz (la estática que se oía aunque el WAV fuera limpio).
+    // Se remuestrea en la app con un sinc enventanado y el WAV sale ya a la
+    // frecuencia del dispositivo.
+    private const val PLAYBACK_RATE = 48_000
+    private const val RESAMPLE_TAPS = 24
 
     private var context: Context? = null
     private var tts: OfflineTts? = null
@@ -252,7 +260,7 @@ object KokoroVoice {
                 mp.prepare()
                 player = mp
                 mp.start()
-                Log.w(TAG, "MediaPlayer playing rate=$rate samples=${samples.size}")
+                Log.w(TAG, "MediaPlayer playing rate=$PLAYBACK_RATE samples=${samples.size}")
                 true
             } catch (t: Throwable) {
                 AppLogger.error(TAG, "MediaPlayer start failed: ${t.javaClass.simpleName}: ${t.message}")
@@ -274,9 +282,10 @@ object KokoroVoice {
         return ok
     }
 
-    /** WAV PCM 16-bit mono: normalizado, sin agudos y con las pausas en silencio. */
+    /** WAV PCM 16-bit mono a 48 kHz: normalizado, con las pausas en silencio. */
     private fun writeWav(file: File, samples: FloatArray, rate: Int) {
-        val dataBytes = samples.size * 2
+        val pcm = conditionAudio(samples, rate)
+        val dataBytes = pcm.size * 2
         val out = BufferedOutputStream(FileOutputStream(file), 1 shl 16)
         try {
             fun le16(v: Int) {
@@ -296,78 +305,111 @@ object KokoroVoice {
             le32(16)
             le16(1)              // PCM
             le16(1)              // mono
-            le32(rate)
-            le32(rate * 2)       // byte rate
+            le32(PLAYBACK_RATE)
+            le32(PLAYBACK_RATE * 2) // byte rate
             le16(2)              // block align
             le16(16)             // bits per sample
             ascii("data")
             le32(dataBytes)
 
-            // [T-orion-voice-denoise] El modelo piper int8 deja un hiss de
-            // fondo (~-29 dB) en las pausas; al normalizar se volvía audible
-            // como "estática". Cadena: normalizar al pico → doble low-pass
-            // 6 kHz (el hiss vive en agudos) → puerta de ruido que silencia las
-            // pausas sin tocar la voz. Validado sobre el WAV real del teléfono:
-            // pausa -27,5 → -42 dB, voz intacta.
-            var peak = 0f
-            for (s in samples) {
-                val a = kotlin.math.abs(s)
-                if (a > peak) peak = a
-            }
-            val gain = if (peak > 1e-4f) {
-                (TARGET_PEAK / peak).coerceAtMost(MAX_GAIN)
-            } else {
-                1f
-            }
-            val norm = FloatArray(samples.size) {
-                (samples[it] * gain).coerceIn(-1f, 1f)
-            }
-            Log.w(TAG, "WAV gain=${"%.2f".format(gain)} peak=${"%.3f".format(peak)}")
-
-            // Doble one-pole low-pass a 6 kHz (12 dB/oct).
-            val a = (1.0 - kotlin.math.exp(-2.0 * Math.PI * 6_000.0 / rate)).toFloat()
-            var y1 = 0f
-            var y2 = 0f
-            for (i in norm.indices) {
-                y1 += a * (norm[i] - y1)
-                y2 += a * (y1 - y2)
-                norm[i] = y2
-            }
-
-            // Puerta de ruido por tramas de 10 ms.
-            val frame = (rate / 100).coerceAtLeast(1)
-            val frames = (norm.size + frame - 1) / frame
-            val rms = FloatArray(frames)
-            for (f in 0 until frames) {
-                val st = f * frame
-                val en = minOf(st + frame, norm.size)
-                var acc = 0.0
-                for (i in st until en) {
-                    val v = norm[i].toDouble()
-                    acc += v * v
-                }
-                rms[f] = kotlin.math.sqrt(acc / (en - st).coerceAtLeast(1)).toFloat()
-            }
-            val sorted = rms.copyOf()
-            sorted.sort()
-            val floor = sorted[(sorted.size * 0.12).toInt().coerceIn(0, sorted.size - 1)]
-            val lo = floor * 1.15f
-            val hi = floor * 4.0f
-            var g = 1f
-            for (i in norm.indices) {
-                val r = rms[minOf(i / frame, frames - 1)]
-                val target = when {
-                    r <= lo -> 0f
-                    r >= hi -> 1f
-                    else -> (r - lo) / (hi - lo)
-                }
-                g += (target - g) * if (target > g) 0.05f else 0.0025f
-                val pcm = (norm[i] * g).coerceIn(-1f, 1f).times(32767f).toInt()
-                    .coerceIn(-32768, 32767)
-                le16(pcm)
+            for (v in pcm) {
+                val q = (v.coerceIn(-1f, 1f) * 32767f).toInt().coerceIn(-32768, 32767)
+                le16(q)
             }
         } finally {
             out.close()
         }
+    }
+
+    /**
+     * [T-orion-voice-48k] Deja la frase lista para el altavoz: normaliza al
+     * pico, silencia las pausas y la remuestrea a [PLAYBACK_RATE].
+     *
+     * La puerta es dura (abre/cierra del todo) y se calcula por tramas de
+     * 10 ms con el percentil 12 % del propio audio como suelo: la voz nunca
+     * pasa por una ganancia intermedia, que era lo que se comía el arranque de
+     * «señor». Después, un sinc enventanado con corte a 9 kHz remuestrea y a la
+     * vez elimina los agudos que solo servían para que el mezclador del ROM
+     * generase "fizz".
+     */
+    private fun conditionAudio(samples: FloatArray, rate: Int): FloatArray {
+        var peak = 0f
+        for (s in samples) {
+            val a = kotlin.math.abs(s)
+            if (a > peak) peak = a
+        }
+        val gain = if (peak > 1e-4f) {
+            (TARGET_PEAK / peak).coerceAtMost(MAX_GAIN)
+        } else {
+            1f
+        }
+        val x = FloatArray(samples.size) { (samples[it] * gain).coerceIn(-1f, 1f) }
+
+        // Puerta de ruido por tramas de 10 ms.
+        val frame = (rate / 100).coerceAtLeast(1)
+        val frames = (x.size + frame - 1) / frame
+        val rms = FloatArray(frames)
+        for (f in 0 until frames) {
+            val st = f * frame
+            val en = minOf(st + frame, x.size)
+            var acc = 0.0
+            for (i in st until en) {
+                val v = x[i].toDouble()
+                acc += v * v
+            }
+            rms[f] = kotlin.math.sqrt(acc / (en - st).coerceAtLeast(1)).toFloat()
+        }
+        val sorted = rms.copyOf()
+        sorted.sort()
+        val floor = sorted[(sorted.size * 0.12).toInt().coerceIn(0, sorted.size - 1)]
+        val threshold = floor * 2.2f
+        var g = 1f
+        for (i in x.indices) {
+            val open = rms[minOf(i / frame, frames - 1)] >= threshold
+            val target = if (open) 1f else 0f
+            g += (target - g) * if (target > g) 0.08f else 0.003f
+            x[i] *= g
+        }
+
+        // Remuestreo a la frecuencia del dispositivo (sinc enventanado, 9 kHz).
+        val outLen = (x.size.toLong() * PLAYBACK_RATE / rate).toInt().coerceAtLeast(1)
+        val fc = (9_000.0 / rate).coerceAtMost(0.5 * PLAYBACK_RATE / rate)
+        val step = rate.toDouble() / PLAYBACK_RATE
+        val y = FloatArray(outLen)
+        for (o in 0 until outLen) {
+            val t = o * step
+            val k0 = kotlin.math.floor(t).toInt()
+            var acc = 0.0
+            for (k in (k0 - RESAMPLE_TAPS)..(k0 + RESAMPLE_TAPS)) {
+                if (k < 0 || k >= x.size) continue
+                val u = t - k
+                val xx = 2.0 * fc * u
+                val sinc = if (kotlin.math.abs(xx) < 1e-9) {
+                    1.0
+                } else {
+                    kotlin.math.sin(Math.PI * xx) / (Math.PI * xx)
+                }
+                val wnd = 0.42 +
+                    0.5 * kotlin.math.cos(Math.PI * u / RESAMPLE_TAPS) +
+                    0.08 * kotlin.math.cos(2.0 * Math.PI * u / RESAMPLE_TAPS)
+                acc += x[k] * (2.0 * fc * sinc * wnd)
+            }
+            y[o] = acc.toFloat()
+        }
+
+        // El remuestreo puede sobrepasar el pico original: se reajusta.
+        var outPeak = 0f
+        for (v in y) {
+            val a = kotlin.math.abs(v)
+            if (a > outPeak) outPeak = a
+        }
+        val outGain = if (outPeak > 1e-4f) TARGET_PEAK / outPeak else 1f
+        for (i in y.indices) y[i] = (y[i] * outGain).coerceIn(-1f, 1f)
+        Log.w(
+            TAG,
+            "WAV gain=${"%.2f".format(gain)} peak=${"%.3f".format(peak)} " +
+                "thr=${"%.3f".format(threshold)} out=$outLen@$PLAYBACK_RATE",
+        )
+        return y
     }
 }
