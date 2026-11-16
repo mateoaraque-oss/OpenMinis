@@ -130,7 +130,7 @@ class WakeWordService : Service(), LifecycleEventObserver {
         const val DEFAULT_PHRASE = "oye orión"
 
         private const val RETRIGGER_MS = 6_000L
-        private const val PANEL_TIMEOUT_MS = 20_000L
+        private const val PANEL_TIMEOUT_MS = 24_000L
 
         /**
          * [T-orion-wake-greeting] Upper bound for «¿Me llamó, señor?».
@@ -743,6 +743,12 @@ class WakeWordService : Service(), LifecycleEventObserver {
         // reconocedor de Google hace `getIntExtra` y, al recibir un Long,
         // lanzaba ClassCastException y se quedaba con 0 ms de silencio, así
         // que cerraba la escucha al instante ("no me deja hablar").
+        //
+        // [T-orion-wake-patient] Además, 1500 ms de silencio eran demasiado
+        // poco: la tarjeta se rendía 1,5 s después de abrirse, antes de que
+        // diese tiempo a hablar. El reconocedor espera ahora 8 s de silencio
+        // (4 s para cerrar como "posible final") y la tarjeta vive 24 s, así
+        // que se puede pensar la frase sin que se cierre sola.
         val listenIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-ES")
@@ -750,9 +756,9 @@ class WakeWordService : Service(), LifecycleEventObserver {
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1_500)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1_200)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 700)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 8_000)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 4_000)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 500)
         }
         var retries = 0
         var heardSomething = false
