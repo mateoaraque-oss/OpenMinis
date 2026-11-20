@@ -330,7 +330,7 @@ class AmsyOrbView @JvmOverloads constructor(
         val s = (sim.radius / 220f).coerceIn(0.55f, 1.6f)
         val effective = if (sim.state == AmsyOrbState.IDLE) max(sim.level, 0.22f) else sim.level
 
-        drawGrid(canvas)
+        drawGrid(canvas, s)
         drawCore(canvas, effective)
         drawConstellation(canvas, s)
         drawTrails(canvas, s)
