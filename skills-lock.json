@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "skills": {
+    "systematic-debugging": {
+      "source": "vudovn/ag-kit",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/systematic-debugging/SKILL.md",
+      "computedHash": "6ea1bc974b90aade24d2097fea7110e4fc8519a5d80af0af75ee850e52554b2f"
+    }
+  }
+}

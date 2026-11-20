@@ -38,8 +38,8 @@ import com.openminis.app.MinisApp
 import com.openminis.app.R
 import com.openminis.app.debug.HeadlessChatRunner
 import com.openminis.app.deeplink.DeepLinkCoordinator
+import com.openminis.app.ui.components.OrionMode
 import com.openminis.app.speech.KokoroModelDownloader
-import com.openminis.app.speech.KokoroVoice
 import com.openminis.app.speech.RecognitionState
 import com.openminis.app.speech.SpeechRecognitionManager
 import com.openminis.app.speech.TextToSpeechManager
@@ -615,6 +615,7 @@ class WakeWordService : Service(), LifecycleEventObserver {
         controller.show(
             getString(R.string.orion_wake_panel_title),
             getString(R.string.orion_wake_panel_hint),
+            mode = OrionMode.current,
         )
         // [T-orion-wake-greeting] Greet first, listen afterwards. The orb goes
         // to PROCESSING while the voice speaks so the card does not claim to

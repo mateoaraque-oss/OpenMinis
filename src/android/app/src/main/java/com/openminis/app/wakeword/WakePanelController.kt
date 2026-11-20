@@ -6,8 +6,6 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PixelFormat
-import android.graphics.RadialGradient
-import android.graphics.Shader
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.provider.Settings
@@ -18,6 +16,9 @@ import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.openminis.app.ui.components.AmsyOrbState
+import com.openminis.app.ui.components.AmsyOrbView
+import com.openminis.app.ui.components.OrionMode
 import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.sin
@@ -50,7 +51,7 @@ class WakePanelController(private val context: Context) {
     private var root: FrameLayout? = null
     private var statusView: TextView? = null
     private var transcriptView: TextView? = null
-    private var orb: JarvisOrbView? = null
+    private var orb: AmsyOrbView? = null
     private var wave: WaveformView? = null
 
     val canShow: Boolean
@@ -59,11 +60,40 @@ class WakePanelController(private val context: Context) {
     val isShowing: Boolean
         get() = root != null
 
+    /** Modo de comportamiento activo (Conducción, Reunión, Trabajo, Personal, Noche). */
+    var mode: OrionMode
+        get() = OrionMode.current
+        set(value) {
+            OrionMode.current = value
+            // El orb refleja el modo: en Reunión y Noche el orb se mantiene quieto;
+            // en Conducción y Trabajo se muestra con normalidad.
+            when (value) {
+                OrionMode.REUNION, OrionMode.NOCHE -> orb?.level = 0.15f
+                else -> /* LISTENING/THINKING/SPEAKING driven by caller */ {}
+            }
+            invalidateTranscriptVisibility()
+        }
+
+    private fun invalidateTranscriptVisibility() {
+        // En modo Reunión la tarjeta no muestra transcripción de voz: solo texto.
+        if (mode == OrionMode.REUNION) {
+            transcriptView?.visibility = android.view.View.GONE
+        } else {
+            transcriptView?.visibility = android.view.View.VISIBLE
+        }
+    }
+
+    fun setMode(mode: OrionMode) {
+        this.mode = mode
+        statusView?.text = mode.label.uppercase()
+    }
+
     private fun dp(value: Int): Int =
         (value * context.resources.displayMetrics.density).toInt()
 
-    fun show(title: String, hint: String) {
+    fun show(title: String, hint: String, mode: OrionMode = OrionMode.current) {
         if (root != null || windowManager == null) return
+        this.mode = mode
 
         // Dark HUD card with a cyan hairline, the same visual language as the
         // JARVIS reference dashboard: near-black teal, one ice-cyan accent
@@ -84,7 +114,7 @@ class WakePanelController(private val context: Context) {
             gravity = Gravity.CENTER_VERTICAL
         }
 
-        val orbView = JarvisOrbView(context)
+        val orbView = AmsyOrbView(context)
         orb = orbView
         row.addView(orbView, LinearLayout.LayoutParams(dp(48), dp(48)))
 
@@ -191,6 +221,8 @@ class WakePanelController(private val context: Context) {
     var onClose: (() -> Unit)? = null
 
     fun setTranscript(text: String) {
+        // En modo Reunión la tarjeta no muestra transcripción de voz.
+        if (mode == OrionMode.REUNION) return
         transcriptView?.text = text
     }
 
@@ -204,7 +236,13 @@ class WakePanelController(private val context: Context) {
             State.PROCESSING -> 0xFFEAF6FF.toInt()
             State.ERROR -> 0xFFFF6B6B.toInt()
         }
-        orb?.accent = color
+        // The orb keeps its cyan identity in every state, like AMSY: what
+        // changes is the shape of the cloud, not the colour of it.
+        orb?.state = when (state) {
+            State.LISTENING -> AmsyOrbState.LISTENING
+            State.PROCESSING -> AmsyOrbState.THINKING
+            State.ERROR -> AmsyOrbState.ERROR
+        }
         wave?.accent = color
         statusView?.setTextColor(color)
         if (state != State.LISTENING) {
@@ -215,6 +253,7 @@ class WakePanelController(private val context: Context) {
     /** 0..1 microphone level, fed from SpeechRecognizer.onRmsChanged. */
     fun setAmplitude(level: Float) {
         wave?.setLevel(level)
+        orb?.level = level
     }
 
     fun hide() {
@@ -279,97 +318,6 @@ class WakePanelController(private val context: Context) {
                 Color.blue(accent),
             )
             canvas.drawCircle(cx, cy, r, paint)
-        }
-    }
-
-    /**
-     * Arc-reactor orb: a pulsing plasma core, one long rotating arc and a
-     * pair of short counter-rotating arcs. Everything is Canvas drawing, so
-     * there is no drawable asset to ship and no animation dependency.
-     */
-    private class JarvisOrbView(context: Context) : View(context) {
-
-        private val core = Paint(Paint.ANTI_ALIAS_FLAG)
-        private val glow = Paint(Paint.ANTI_ALIAS_FLAG)
-        private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeCap = Paint.Cap.ROUND
-        }
-
-        @Volatile
-        var accent: Int = 0xFF7EE8FF.toInt()
-            set(value) {
-                field = value
-                invalidate()
-            }
-
-        private var phase = 0f
-
-        private val animator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 2_600
-            repeatCount = ValueAnimator.INFINITE
-            interpolator = LinearInterpolator()
-            addUpdateListener {
-                phase = it.animatedValue as Float
-                invalidate()
-            }
-        }
-
-        override fun onAttachedToWindow() {
-            super.onAttachedToWindow()
-            animator.start()
-        }
-
-        override fun onDetachedFromWindow() {
-            animator.cancel()
-            super.onDetachedFromWindow()
-        }
-
-        private fun argb(alpha: Int, color: Int): Int =
-            Color.argb(alpha, Color.red(color), Color.green(color), Color.blue(color))
-
-        override fun onDraw(canvas: Canvas) {
-            val cx = width / 2f
-            val cy = height / 2f
-            val r = min(cx, cy)
-            val angle = phase * 360f
-            val pulse = 1f + 0.06f * sin(phase * 2f * Math.PI.toFloat() * 3f)
-
-            // Outer glow.
-            glow.shader = RadialGradient(
-                cx, cy, r,
-                intArrayOf(argb(90, accent), argb(0, accent)),
-                null,
-                Shader.TileMode.CLAMP,
-            )
-            canvas.drawCircle(cx, cy, r, glow)
-
-            // Plasma core.
-            core.shader = RadialGradient(
-                cx, cy, r * 0.52f,
-                intArrayOf(
-                    Color.WHITE,
-                    argb(235, accent),
-                    argb(90, accent),
-                ),
-                floatArrayOf(0f, 0.45f, 1f),
-                Shader.TileMode.CLAMP,
-            )
-            canvas.drawCircle(cx, cy, r * 0.34f * pulse, core)
-
-            // Long arc, clockwise.
-            ring.strokeWidth = r * 0.075f
-            ring.color = argb(215, accent)
-            val r1 = r * 0.86f
-            canvas.drawArc(cx - r1, cy - r1, cx + r1, cy + r1, angle, 205f, false, ring)
-
-            // Two short arcs, counter-clockwise.
-            ring.strokeWidth = r * 0.055f
-            ring.color = argb(150, accent)
-            val r2 = r * 0.68f
-            val start = -angle * 1.55f
-            canvas.drawArc(cx - r2, cy - r2, cx + r2, cy + r2, start, 120f, false, ring)
-            canvas.drawArc(cx - r2, cy - r2, cx + r2, cy + r2, start + 180f, 55f, false, ring)
         }
     }
 
