@@ -72,6 +72,7 @@ class WakePanelController(private val context: Context) {
                 else -> /* LISTENING/THINKING/SPEAKING driven by caller */ {}
             }
             invalidateTranscriptVisibility()
+            statusView?.text = value.label.uppercase()
         }
 
     private fun invalidateTranscriptVisibility() {
@@ -81,11 +82,6 @@ class WakePanelController(private val context: Context) {
         } else {
             transcriptView?.visibility = android.view.View.VISIBLE
         }
-    }
-
-    fun setMode(mode: OrionMode) {
-        this.mode = mode
-        statusView?.text = mode.label.uppercase()
     }
 
     private fun dp(value: Int): Int =
