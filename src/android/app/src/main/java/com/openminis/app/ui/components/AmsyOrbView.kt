@@ -80,6 +80,14 @@ class AmsyOrbSim {
     private val fromX = FloatArray(COUNT)
     private val fromY = FloatArray(COUNT)
 
+    // Stable per-particle scatter. The original cloud is a *cloud*: if every
+    // particle sits on the same parametric curve, the constellation lines join
+    // them into one solid stroke and the orb reads as a letter "C". Each
+    // particle keeps its own angle, radius and angular speed instead.
+    private val randAngle = FloatArray(COUNT)
+    private val randRadius = FloatArray(COUNT)
+    private val randSpin = FloatArray(COUNT)
+
     internal val trailX = Array(COUNT) { FloatArray(TRAIL) }
     internal val trailY = Array(COUNT) { FloatArray(TRAIL) }
     internal val trailN = IntArray(COUNT)
@@ -126,6 +134,10 @@ class AmsyOrbSim {
                 vx[i] = 0f
                 vy[i] = 0f
                 trailN[i] = 0
+                randAngle[i] = random.nextFloat() * 2f * PI.toFloat()
+                // sqrt() so the disc fills evenly instead of clumping in the middle.
+                randRadius[i] = sqrt(random.nextFloat())
+                randSpin[i] = 0.45f + random.nextFloat() * 1.1f
             }
             for (i in 0 until COUNT) {
                 targetX[i] = px[i]
@@ -143,7 +155,7 @@ class AmsyOrbSim {
         val amplitude = amplitude()
         // The original jitters in raw pixels; scale that with the cloud so a
         // 48 dp orb shakes like a 48 dp orb and not like a full screen one.
-        val jitter = 0.6f * amplitude * (radius / 220f).coerceIn(0.35f, 1.6f)
+        val jitter = amplitude * radius * 0.018f
         if (morph > 0) morph--
         val progress = if (morph > 0) 1f - morph / MORPH_FRAMES.toFloat() else 1f
         val ease = (3f - 2f * progress) * progress * progress
@@ -196,14 +208,15 @@ class AmsyOrbSim {
         val r = radius
         when (state) {
             AmsyOrbState.IDLE, AmsyOrbState.ERROR -> {
-                // Elliptical spiral, radius breathing between 0.1 and 0.9.
-                val rotation = -t * 0.018f
+                // Elliptical cloud, gently swirling. Every particle has its own
+                // angle/radius, so the constellation stays a web instead of a
+                // single drawn curve.
+                val rotation = -t * 0.012f
                 for (i in 0 until COUNT) {
-                    val u = i / COUNT.toFloat()
-                    val phase = rotation - u * 1.8f
-                    val spread = 0.4f * cos(u * PI.toFloat()) + 0.5f
-                    targetX[i] = cx + r * spread * cos(phase)
-                    targetY[i] = cy + r * spread * sin(phase) * 0.55f
+                    val angle = randAngle[i] + rotation * randSpin[i]
+                    val spread = radius * (0.28f + 0.72f * randRadius[i])
+                    targetX[i] = cx + cos(angle) * spread
+                    targetY[i] = cy + sin(angle) * spread * 0.55f
                 }
             }
 
@@ -422,7 +435,7 @@ class AmsyOrbView @JvmOverloads constructor(
     private fun drawGlow(canvas: Canvas, s: Float, level: Float) {
         glowPaint.maskFilter = BlurMaskFilter(2f * s, BlurMaskFilter.Blur.NORMAL)
         glowPaint.color = cyan(0.45f * level + 0.55f)
-        val dot = (0.9f + 0.9f * level) * s
+        val dot = (1.5f + 1.3f * level) * s.coerceAtLeast(0.7f)
         for (i in 0 until AmsyOrbSim.COUNT) {
             canvas.drawCircle(sim.particleX(i), sim.particleY(i), dot, glowPaint)
         }
