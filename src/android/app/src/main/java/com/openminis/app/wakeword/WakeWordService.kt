@@ -40,6 +40,7 @@ import com.openminis.app.debug.HeadlessChatRunner
 import com.openminis.app.deeplink.DeepLinkCoordinator
 import com.openminis.app.ui.components.OrionMode
 import com.openminis.app.speech.KokoroModelDownloader
+import com.openminis.app.speech.KokoroVoice
 import com.openminis.app.speech.RecognitionState
 import com.openminis.app.speech.SpeechRecognitionManager
 import com.openminis.app.speech.TextToSpeechManager

@@ -57,12 +57,16 @@ enum class OrionMode(val label: String, val instruction: String) {
             "Idioma: español rioplatense."
     );
 
-    /** Modo activo actualmente. Por defecto, PERSONAL. */
-    var current: OrionMode = PERSONAL
-        private set
-
-    fun set(mode: OrionMode) {
-        current = mode
+    companion object {
+        /**
+         * Modo activo actualmente. Por defecto, PERSONAL.
+         *
+         * Vive en el companion y no en el cuerpo del enum: una propiedad de
+         * instancia inicializada con `PERSONAL` se evaluaría al construir
+         * `CONDUCCION`, cuando `PERSONAL` todavía no existe ("Enum entry
+         * 'PERSONAL' is uninitialized here").
+         */
+        var current: OrionMode = PERSONAL
     }
 }
 
